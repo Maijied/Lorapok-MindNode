@@ -6,7 +6,9 @@ Lorapok MindNode is a professional-grade digital notepad designed for users who 
 ## ✨ Key Features
 - **🔒 Zero-Knowledge Security**: No accounts. No passwords stored on servers. Your notes are encrypted client-side using the Web Crypto API (AES-GCM).
 - **🔑 Key-Based Access**: Access and update notes using a unique Note ID and a Secret Key.
+- **🛡️ Recovery Phrases**: BIP-39 style 12-word mnemonic phrases for secure key backup.
 - **⚡ Blazing Fast UI**: Built with Vite, React, and Tailwind CSS, following the minimalist and organic design patterns of Lorapok Labs.
+- **📱 PWA Ready**: Install as a native app for faster access and offline capabilities.
 - **✍️ Advanced Editor**: A powerful, distraction-free editing experience with auto-save and rich content support.
 - **🔗 Secure Sharing**: Generate shareable links that require a Secret Key to decrypt and view.
 - **🌙 Aesthetic Experience**: Full dark mode support and a polished, senior-level frontend design.

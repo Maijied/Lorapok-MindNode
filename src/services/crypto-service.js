@@ -1,20 +1,12 @@
 /**
  * Crypto Service
  * Implements industry-standard End-to-End Encryption (E2EE) using the Web Crypto API.
- *
- * Strategy:
- * 1. Key Derivation: PBKDF2 with SHA-256.
- * 2. Encryption: AES-GCM (Advanced Encryption Standard - Galois/Counter Mode).
- * 3. Storage: Everything stored as Base64 strings.
  */
 
 const ITERATIONS = 100000;
 const KEY_LEN = 256;
 
 export const CryptoService = {
-    /**
-     * Derives a cryptographic key from a password and salt.
-     */
     async deriveKey(password, salt) {
         const encoder = new TextEncoder();
         const passwordKey = await window.crypto.subtle.importKey(
@@ -39,10 +31,6 @@ export const CryptoService = {
         );
     },
 
-    /**
-     * Encrypts plaintext using a secret key.
-     * @returns {Promise<{ciphertext: string, iv: string, salt: string}>}
-     */
     async encrypt(plaintext, password) {
         const encoder = new TextEncoder();
         const salt = window.crypto.getRandomValues(new Uint8Array(16));
@@ -62,9 +50,6 @@ export const CryptoService = {
         };
     },
 
-    /**
-     * Decrypts a ciphertext using a secret key.
-     */
     async decrypt(ciphertextB64, password, ivB64, saltB64) {
         const salt = this.base64ToBuffer(saltB64);
         const iv = this.base64ToBuffer(ivB64);
@@ -84,7 +69,28 @@ export const CryptoService = {
         }
     },
 
-    // Helpers
+    /**
+     * Encrypts a binary blob (for files).
+     */
+    async encryptBlob(blob, password) {
+        const arrayBuffer = await blob.arrayBuffer();
+        const salt = window.crypto.getRandomValues(new Uint8Array(16));
+        const iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+        const key = await this.deriveKey(password, salt);
+        const encrypted = await window.crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv: iv },
+            key,
+            arrayBuffer
+        );
+
+        return {
+            ciphertext: this.bufferToBase64(encrypted),
+            iv: this.bufferToBase64(iv),
+            salt: this.bufferToBase64(salt)
+        };
+    },
+
     bufferToBase64(buffer) {
         return btoa(String.fromCharCode(...new Uint8Array(buffer)));
     },
