@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { lock, Plus, FolderOpen, ShieldCheck } from 'lucide-react';
+import { lock, Plus, FolderOpen, ShieldCheck, Trash2, Archive } from 'lucide-react';
 import { DB } from '../services\firebase-service';
+import { useVault } from '../hooks\useVault';
 
 const Home = () => {
     const [noteId, setNoteId] = useState('');
+    const { notes, addNoteToVault, removeNoteFromVault, clearVault } = useVault();
     const navigate = useNavigate();
 
     const handleCreateNew = () => {
@@ -21,7 +23,7 @@ const Home = () => {
 
     return (
         <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950 transition-colors duration-300">
-            <div className="w-full max-w-xl text-center space-y-12">
+            <div className="w-full max-w-4xl text-center space-y-12">
                 {/* Branding */}
                 <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
                     <div className="inline-flex items-center justify-center w-20 h-20 bg-brand-600 text-white rounded-3xl mb-4 shadow-2xl shadow-brand-500/40">
@@ -35,7 +37,7 @@ const Home = () => {
                     </p>
                 </div>
 
-                {/* Action Cards */}
+                {/* Main Actions */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Create Card */}
                     <div
@@ -72,6 +74,46 @@ const Home = () => {
                         </form>
                     </div>
                 </div>
+
+                {/* Vault Section */}
+                {notes.length > 0 && (
+                    <div className="text-left space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                        <div className="flex items-center justify-between px-2">
+                            <div className="flex items-center gap-2 text-zinc-900 dark:text-zinc-100 font-bold">
+                                <Archive size={20} className="text-brand-600" />
+                                <span>Your Vault</span>
+                            </div>
+                            <button
+                                onClick={clearVault}
+                                className="text-xs text-zinc-400 hover:text-red-500 transition-colors flex items-center gap-1"
+                            >
+                                <Trash2 size={12} /> Clear All
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                            {notes.map(note => (
+                                <div
+                                    key={note.id}
+                                    className="p-4 bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex items-center justify-between group hover:border-brand-500 transition-all"
+                                >
+                                    <div
+                                        className="cursor-pointer overflow-hidden"
+                                        onClick={() => navigate(`/note/${note.id}`)}
+                                    >
+                                        <p className="text-sm font-medium truncate w-32">{note.title || 'Untitled'}</p>
+                                        <p className="text-[10px] text-zinc-400 font-mono truncate">{note.id}</p>
+                                    </div>
+                                    <button
+                                        onClick={() => removeNoteFromVault(note.id)}
+                                        className="p-2 text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Security Hint */}
                 <div className="p-4 bg-zinc-100 dark:bg-zinc-900/50 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-3 text-zinc-500 dark:text-zinc-400 text-sm">

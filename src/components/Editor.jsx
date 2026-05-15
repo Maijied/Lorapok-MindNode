@@ -1,23 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Copy, Share2, Trash2, Download, LogOut, Save, AlertCircle } from 'lucide-react';
+import { Copy, Share2, Trash2, Download, LogOut, Save, AlertCircle, Eye, EyeOff, Check } from 'lucide-react';
 import { CryptoService } from '../services\crypto-service';
 import { DB } from '../services\firebase-service';
+import { useVault } from '../hooks\useVault';
+import MarkdownPreview from './MarkdownPreview';
 
 const Editor = () => {
     const { noteId } = useParams();
     const navigate = useNavigate();
+    const { addNoteToVault } = useVault();
 
     const [key, setKey] = useState('');
     const [isDecrypted, setIsDecrypted] = useState(false);
     const [content, setContent] = useState('');
     const [title, setTitle] = useState('Untitled Note');
+    const [isPreview, setIsPreview] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
 
     const autoSaveTimer = useRef(null);
 
-    // Load and Decrypt Note
     const handleUnlock = async (e) => {
         e.preventDefault();
         setError('');
@@ -30,15 +33,16 @@ const Editor = () => {
                 data.salt
             );
 
-            // Note: In a full version, we'd also decrypt title/tags
             setContent(decryptedText);
             setIsDecrypted(true);
+
+            // Add to vault for convenience
+            addNoteToVault(noteId, title);
         } catch (err) {
             setError('Invalid Secret Key or corrupted note.');
         }
     };
 
-    // Handle Auto-save
     useEffect(() => {
         if (!isDecrypted) return;
 
@@ -69,7 +73,6 @@ const Editor = () => {
 
     const handleDelete = async () => {
         if (!confirm("Delete this note forever? This action is irreversible.")) return;
-        // Implement DB.deleteNote if added to DB service
         alert("Deletion logic would be called here.");
     };
 
@@ -117,7 +120,6 @@ const Editor = () => {
 
     return (
         <div className="h-screen flex flex-col bg-white dark:bg-zinc-950 transition-colors duration-300">
-            {/* Top Toolbar */}
             <header className="h-16 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-6 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md z-10">
                 <div className="flex items-center gap-4">
                     <div
@@ -136,7 +138,14 @@ const Editor = () => {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-xs font-medium transition-all">
+                    <button
+                        onClick={() => setIsPreview(!isPreview)}
+                        className={`p-2 rounded-lg transition-all ${isPreview ? 'bg-brand-100 dark:bg-brand-900 text-brand-600' : 'text-zinc-500 hover:text-brand-600'}`}
+                        title="Toggle Preview"
+                    >
+                        {isPreview ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-xs font-medium">
                         {isSaving ? <div className="w-2 h-2 bg-brand-500 rounded-full animate-pulse"></div> : <div className="w-2 h-2 bg-green-500 rounded-full"></div>}
                         {isSaving ? 'Saving...' : 'Saved'}
                     </div>
@@ -157,16 +166,17 @@ const Editor = () => {
                 </div>
             </header>
 
-            {/* Editor Area */}
-            <main className="flex-1 overflow-y-auto p-6 md:p-12 lg:p-24">
-                <div className="max-w-4xl mx-auto">
+            <main className="flex-1 overflow-hidden flex">
+                {!isPreview ? (
                     <textarea
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
-                        placeholder="Your encrypted thoughts go here..."
-                        className="w-full h-[calc(100vh-12rem)] resize-none bg-transparent outline-none text-xl leading-relaxed placeholder-zinc-300 dark:placeholder-zinc-600 font-light"
+                        placeholder="Write in Markdown... ✍️"
+                        className="flex-1 p-8 md:p-12 lg:p-24 resize-none bg-transparent outline-none text-xl leading-relaxed placeholder-zinc-300 dark:placeholder-zinc-600 font-light"
                     />
-                </div>
+                ) : (
+                    <MarkdownPreview content={content} />
+                )}
             </main>
         </div>
     );
