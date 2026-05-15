@@ -1,27 +1,16 @@
 # Firestore Security Rules
 
-# Copy and paste these rules into your Firebase Console -> Firestore -> Rules tab.
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Match any document in the 'notes' collection
     match /notes/{noteId} {
-
-      // User can read/write their own notes
-      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
-
-      // Allow anyone to create a note if they are authenticated
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-
-      // Shareable Note Logic:
-      // Allow read access to anyone if the note is marked as public.
-      // The PIN verification is handled on the client side for this implementation.
-      allow read: if resource.data.isPublic == true;
+      // Since we use a Key-based system without traditional Auth,
+      // any client with the NoteId can read the encrypted blob.
+      // The security is provided by the AES-GCM encryption (E2EE).
+      allow read, write: if true;
     }
 
-    // Default: Deny everything else
     match /{document=**} {
       allow read, write: if false;
     }
