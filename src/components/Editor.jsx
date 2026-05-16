@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Lock, Share2, Trash2, Download, Upload, Eye, EyeOff, AlertCircle, Clock, Tag, X, FileText, Paperclip } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CryptoService } from '../services/crypto-service';
-import { MnemonicService } from '../services/mnemonic-service';
+import { MnemonicService, isValidPin } from '../services/mnemonic-service';
 import { DB } from '../services/firebase-service';
 import { useVault } from '../hooks/useVault';
 import MarkdownPreview from './MarkdownPreview';
@@ -14,7 +14,12 @@ const Editor = () => {
     const { addNoteToVault } = useVault();
 
     const [key, setKey] = useState('');
-    const [isMnemonic, setIsMnemonic] = useState(false);
+    const [unlockMode, setUnlockMode] = useState('pin');
+    const [isNewNote, setIsNewNote] = useState(false);
+    const [pinEnabled, setPinEnabled] = useState(false);
+    const [showPinSetup, setShowPinSetup] = useState(false);
+    const [setupPin, setSetupPin] = useState('');
+    const [setupPinConfirm, setSetupPinConfirm] = useState('');
     const [isDecrypted, setIsDecrypted] = useState(false);
     const [content, setContent] = useState('');
     const [title, setTitle] = useState('Untitled Note');
@@ -32,31 +37,72 @@ const Editor = () => {
     const autoSaveTimer = useRef(null);
     const fileInputRef = useRef(null);
 
+    const getFinalKey = (mode, input) =>
+        mode === 'recovery' ? MnemonicService.phraseToKey(input) : input;
+
+    useEffect(() => {
+        DB.getNoteMeta(noteId).then(({ exists, pinEnabled: hasPin }) => {
+            setIsNewNote(!exists);
+            setPinEnabled(hasPin);
+            setUnlockMode(!exists || !hasPin ? 'recovery' : 'pin');
+        });
+    }, [noteId]);
+
     const handleUnlock = async (e) => {
         e.preventDefault();
         setError('');
 
-        const finalKey = isMnemonic
-            ? MnemonicService.phraseToKey(key)
-            : key;
+        if (isNewNote && unlockMode !== 'recovery') {
+            setError('New notes must be set up with a recovery phrase first.');
+            return;
+        }
+
+        if (unlockMode === 'recovery') {
+            if (!MnemonicService.validatePhrase(key)) {
+                setError('Enter a valid 12-word recovery phrase.');
+                return;
+            }
+        } else if (!isValidPin(key)) {
+            setError('Enter a 6-digit PIN.');
+            return;
+        }
+
+        if (isNewNote) {
+            setShowPinSetup(true);
+            return;
+        }
 
         try {
             const data = await DB.fetchNote(noteId);
+            let decryptKey = getFinalKey(unlockMode, key);
+
+            if (unlockMode === 'recovery' && data.pinEnabled && data.recoverySeal) {
+                const recoveredPin = await CryptoService.decrypt(
+                    data.recoverySeal.ciphertext,
+                    decryptKey,
+                    data.recoverySeal.iv,
+                    data.recoverySeal.salt
+                );
+                decryptKey = recoveredPin;
+                setUnlockMode('pin');
+                setKey(recoveredPin);
+            }
+
             const decryptedText = await CryptoService.decrypt(
                 data.ciphertext,
-                finalKey,
+                decryptKey,
                 data.iv,
                 data.salt
             );
 
             let finalTitle = title;
             if (data.encryptedTitle) {
-                finalTitle = await CryptoService.decrypt(data.encryptedTitle.ciphertext, finalKey, data.encryptedTitle.iv, data.encryptedTitle.salt);
+                finalTitle = await CryptoService.decrypt(data.encryptedTitle.ciphertext, decryptKey, data.encryptedTitle.iv, data.encryptedTitle.salt);
             }
 
             let finalTags = [];
             if (data.encryptedTags) {
-                const decryptedTagsRaw = await CryptoService.decrypt(data.encryptedTags.ciphertext, finalKey, data.encryptedTags.iv, data.encryptedTags.salt);
+                const decryptedTagsRaw = await CryptoService.decrypt(data.encryptedTags.ciphertext, decryptKey, data.encryptedTags.iv, data.encryptedTags.salt);
                 finalTags = JSON.parse(decryptedTagsRaw);
             }
 
@@ -67,7 +113,55 @@ const Editor = () => {
             setIsDecrypted(true);
             addNoteToVault(noteId, finalTitle);
         } catch (err) {
-            setError('Invalid Secret Key or Recovery Phrase.');
+            setError(unlockMode === 'recovery'
+                ? 'Invalid recovery phrase.'
+                : 'Invalid 6-digit PIN. Try recovery phrase if you forgot your PIN.');
+        }
+    };
+
+    const handlePinSetup = async (e) => {
+        e.preventDefault();
+        setError('');
+        if (!isValidPin(setupPin)) {
+            setError('PIN must be exactly 6 digits.');
+            return;
+        }
+        if (setupPin !== setupPinConfirm) {
+            setError('PINs do not match.');
+            return;
+        }
+
+        try {
+            const recoveryKey = getFinalKey('recovery', key);
+            const recoverySeal = await CryptoService.encrypt(setupPin, recoveryKey);
+            const encryptedBody = await CryptoService.encrypt('', setupPin);
+            const encryptedTitle = await CryptoService.encrypt('Untitled Note', setupPin);
+            const encryptedTags = await CryptoService.encrypt(JSON.stringify([]), setupPin);
+
+            await DB.saveNote(noteId, {
+                ciphertext: encryptedBody.ciphertext,
+                iv: encryptedBody.iv,
+                salt: encryptedBody.salt,
+                encryptedTitle,
+                encryptedTags,
+                recoverySeal,
+                attachments: [],
+                pinEnabled: true,
+                updatedAt: new Date().toISOString(),
+            });
+
+            setKey(setupPin);
+            setUnlockMode('pin');
+            setPinEnabled(true);
+            setIsNewNote(false);
+            setShowPinSetup(false);
+            setIsDecrypted(true);
+            setContent('');
+            setTitle('Untitled Note');
+            setTags([]);
+            addNoteToVault(noteId, 'Untitled Note');
+        } catch (err) {
+            setError('Could not set up your PIN. Please try again.');
         }
     };
 
@@ -81,7 +175,7 @@ const Editor = () => {
 
     const saveNote = async () => {
         setIsSaving(true);
-        const finalKey = isMnemonic ? MnemonicService.phraseToKey(key) : key;
+        const finalKey = getFinalKey(unlockMode, key);
         try {
             const encryptedBody = await CryptoService.encrypt(content, finalKey);
             const encryptedTitle = await CryptoService.encrypt(title, finalKey);
@@ -94,6 +188,7 @@ const Editor = () => {
                 encryptedTitle,
                 encryptedTags,
                 attachments,
+                pinEnabled: unlockMode === 'pin' || pinEnabled,
                 ttl: ttl,
                 updatedAt: new Date().toISOString()
             });
@@ -109,7 +204,7 @@ const Editor = () => {
         if (!file) return;
 
         setIsUploading(true);
-        const finalKey = isMnemonic ? MnemonicService.phraseToKey(key) : key;
+        const finalKey = getFinalKey(unlockMode, key);
         try {
             const encryptedBlob = await CryptoService.encryptBlob(file, finalKey);
             const downloadUrl = await DB.uploadFile(noteId, file.name, encryptedBlob.ciphertext);
@@ -133,7 +228,7 @@ const Editor = () => {
     };
 
     const downloadAttachment = async (file) => {
-        const finalKey = isMnemonic ? MnemonicService.phraseToKey(key) : key;
+        const finalKey = getFinalKey(unlockMode, key);
         try {
             const response = await fetch(file.url);
             const blob = await response.blob();
@@ -176,7 +271,7 @@ const Editor = () => {
             return;
         }
 
-        const finalKey = isMnemonic ? MnemonicService.phraseToKey(key) : key;
+        const finalKey = getFinalKey(unlockMode, key);
         try {
             const response = await fetch(file.url);
             const blob = await response.blob();
@@ -204,10 +299,59 @@ const Editor = () => {
     };
 
     const handleShare = async () => {
-        const url = `${window.location.origin}/note/${noteId}`;
+        const url = `${window.location.origin}${import.meta.env.BASE_URL}note/${noteId}`;
         await navigator.clipboard.writeText(url);
-        alert("Shareable link copied! Send this link and the Secret Key to others.");
+        alert("Shareable link copied! Send this link and the 6-digit PIN or recovery phrase to others.");
     };
+
+    if (showPinSetup) {
+        return (
+            <motion.div className="min-h-screen flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-8 border border-zinc-200 dark:border-zinc-800"
+                >
+                    <h2 className="text-2xl font-bold text-center mb-2">Set your 6-digit PIN</h2>
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center mb-6">
+                        Recovery phrase is saved. Choose any 6 digits for daily access to this note.
+                    </p>
+                    <form onSubmit={handlePinSetup} className="space-y-4">
+                        <input
+                            type="password"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={setupPin}
+                            onChange={(e) => setSetupPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                            className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-brand-500 text-center text-2xl tracking-[0.5em]"
+                            placeholder="••••••"
+                            autoFocus
+                        />
+                        <input
+                            type="password"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={setupPinConfirm}
+                            onChange={(e) => setSetupPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                            className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-brand-500 text-center text-2xl tracking-[0.5em]"
+                            placeholder="Confirm"
+                        />
+                        {error && (
+                            <p className="text-red-500 text-sm text-center flex items-center justify-center gap-1">
+                                <AlertCircle size={14} /> {error}
+                            </p>
+                        )}
+                        <button
+                            type="submit"
+                            className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl"
+                        >
+                            Save PIN & open note
+                        </button>
+                    </form>
+                </motion.div>
+            </motion.div>
+        );
+    }
 
     if (!isDecrypted) {
         return (
@@ -220,31 +364,50 @@ const Editor = () => {
                     <div className="w-16 h-16 bg-brand-100 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 rounded-2xl flex items-center justify-center mx-auto mb-6">
                         <Lock size={32} />
                     </div>
-                    <h2 className="text-2xl font-bold mb-2">Unlock Note</h2>
-                    <p className="text-zinc-500 dark:text-zinc-400 mb-8">Enter your Secret Key or Recovery Phrase.</p>
+                    <h2 className="text-2xl font-bold mb-2">
+                        {isNewNote ? 'Set up note' : 'Unlock note'}
+                    </h2>
+                    <p className="text-zinc-500 dark:text-zinc-400 mb-8 text-sm">
+                        {isNewNote
+                            ? 'Use your 12-word recovery phrase first. You will set a 6-digit PIN next.'
+                            : pinEnabled
+                                ? 'Enter your 6-digit PIN, or switch to recovery phrase if you forgot it.'
+                                : 'Enter your recovery phrase to unlock this note.'}
+                    </p>
 
-                    <div className="flex gap-2 mb-6 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl">
-                        <button
-                            onClick={() => setIsMnemonic(false)}
-                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${!isMnemonic ? 'bg-white dark:bg-zinc-700 shadow-sm text-brand-600' : 'text-zinc-500'}`}
-                        >
-                            Secret Key
-                        </button>
-                        <button
-                            onClick={() => setIsMnemonic(true)}
-                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${isMnemonic ? 'bg-white dark:bg-zinc-700 shadow-sm text-brand-600' : 'text-zinc-500'}`}
-                        >
-                            Mnemonic
-                        </button>
-                    </div>
+                    {!isNewNote && pinEnabled && (
+                        <motion.div className="flex gap-2 mb-6 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl">
+                            <button
+                                type="button"
+                                onClick={() => { setUnlockMode('pin'); setKey(''); setError(''); }}
+                                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${unlockMode === 'pin' ? 'bg-white dark:bg-zinc-700 shadow-sm text-brand-600' : 'text-zinc-500'}`}
+                            >
+                                6-digit PIN
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setUnlockMode('recovery'); setKey(''); setError(''); }}
+                                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${unlockMode === 'recovery' ? 'bg-white dark:bg-zinc-700 shadow-sm text-brand-600' : 'text-zinc-500'}`}
+                            >
+                                Recovery phrase
+                            </button>
+                        </motion.div>
+                    )}
 
                     <form onSubmit={handleUnlock} className="space-y-4">
                         <input
-                            type="password"
+                            type={unlockMode === 'recovery' ? 'text' : 'password'}
+                            inputMode={unlockMode === 'pin' ? 'numeric' : 'text'}
+                            maxLength={unlockMode === 'pin' ? 6 : undefined}
                             value={key}
-                            onChange={(e) => setKey(e.target.value)}
+                            onChange={(e) => {
+                                const v = unlockMode === 'pin'
+                                    ? e.target.value.replace(/\D/g, '').slice(0, 6)
+                                    : e.target.value;
+                                setKey(v);
+                            }}
                             className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-brand-500 transition-all text-center text-lg tracking-widest"
-                            placeholder={isMnemonic ? "12 word phrase..." : "••••••••"}
+                            placeholder={unlockMode === 'recovery' ? '12 word recovery phrase...' : '6-digit PIN'}
                             autoFocus
                         />
                         {error && (
@@ -305,12 +468,12 @@ const Editor = () => {
                                         <p>Your notes are encrypted in your browser before being sent to the server. We never see your secret key or your content.</p>
                                     </div>
                                     <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl border border-zinc-100 dark:border-zinc-800">
-                                        <p className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">🔑 Secret Keys & Mnemonics</p>
-                                        <p>You can use a custom <b>Secret Key</b> or a 12-word <b>Mnemonic Phrase</b>. If you lose both, your data is gone forever.</p>
+                                        <p className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">🔑 Recovery phrase & 6-digit PIN</p>
+                                        <p>New notes require a <b>12-word recovery phrase</b> first, then a <b>6-digit PIN</b> for daily access. Forgot your PIN? Unlock with the recovery phrase.</p>
                                     </div>
                                     <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl border border-zinc-100 dark:border-zinc-800">
                                         <p className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">🔗 Secure Sharing</p>
-                                        <p>Share the Note ID link and the Secret Key with someone you trust. They can then decrypt and view the note.</p>
+                                        <p>Share the Note ID link and the PIN or recovery phrase with someone you trust. They can then decrypt and view the note.</p>
                                     </div>
                                     <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl border border-zinc-100 dark:border-zinc-800">
                                         <p className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">⏱️ Self-Destruct</p>

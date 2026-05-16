@@ -100,12 +100,21 @@ Uses the **Web Crypto API** (no third-party crypto libraries).
 2. Derive the symmetric key from the secret key and `salt`.
 3. Decrypt with AES-GCM; wrong keys fail the authentication tag check.
 
-### 4.2 Access Control
+### 4.2 Access Control (Recovery phrase + 6-digit PIN)
 
-Access is **note ID + secret key**, not user accounts.
+Access is **note ID + credentials**, not user accounts.
+
+| Phase | Credential | Purpose |
+|-------|------------|---------|
+| First-time setup | 12-word recovery phrase | Required to create a note; backs up access |
+| PIN setup | 6-digit PIN (any digits) | Encrypts note content for daily use |
+| Daily unlock | 6-digit PIN | Fast unlock and auto-save |
+| Recovery | 12-word recovery phrase | Restores PIN via `recoverySeal` if PIN is forgotten |
+
+The note body is encrypted with the **PIN**. The recovery phrase encrypts a sealed copy of the PIN (`recoverySeal`) so recovery never stores the PIN in plaintext on the server.
 
 - Routes: `/` (home), `/note/:noteId` (editor)
-- Possession of the correct key proves access; the server never validates identity.
+- `pinEnabled` and `recoverySeal` are stored as metadata alongside ciphertext (not secret)
 
 ## 5. Encrypt / Decrypt Data Flow
 
@@ -119,8 +128,8 @@ sequenceDiagram
     participant Cache as CacheService (IndexedDB)
     participant Firestore
 
-    User->>Editor: Enter secret key or recovery phrase
-    Editor->>Mnemonic: phraseToKey() (if mnemonic)
+    User->>Editor: Enter 6-digit PIN or recovery phrase
+    Editor->>Mnemonic: phraseToKey() (recovery) or PIN as key
     Editor->>DB: fetchNote(noteId)
     DB->>Cache: getNote (local-first)
     alt cache miss
@@ -167,6 +176,8 @@ flowchart TD
 | `encryptedTitle` | Encrypted title blob |
 | `encryptedTags` | Encrypted tags blob |
 | `attachments` | Encrypted file metadata + Storage URLs |
+| `pinEnabled` | `true` after 6-digit PIN setup |
+| `recoverySeal` | PIN encrypted with recovery phrase (for PIN recovery) |
 | `ttl` | Optional self-destruct hours |
 | `updatedAt` | ISO timestamp |
 
@@ -176,7 +187,7 @@ flowchart TD
 |------|------|
 | `src/main.jsx` | React bootstrap |
 | `src/App.jsx` | Routes: `/`, `/note/:noteId` |
-| `src/components/` | Home, Editor, MarkdownPreview |
+| `src/components/` | Home, Editor, MarkdownPreview, HowToUseModal |
 | `src/services/` | Crypto, Firebase, IndexedDB cache, mnemonics |
 | `src/hooks/useVault.js` | Recent-note bookmarks (IDs/titles only) |
 | `public/sw.js` | Service worker for offline assets |

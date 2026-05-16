@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Plus, FolderOpen, ShieldCheck, Key, RefreshCw, Archive, Trash2 } from 'lucide-react';
+import { Lock, Plus, FolderOpen, ShieldCheck, Key, RefreshCw, Archive, Trash2, HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DB } from '../services/firebase-service';
 import { MnemonicService } from '../services/mnemonic-service';
 import { useVault } from '../hooks/useVault';
+import HowToUseModal from './HowToUseModal';
 
 const Home = () => {
     const [noteId, setNoteId] = useState('');
-    const [isMnemonicMode, setIsMnemonicMode] = useState(false);
     const [mnemonic, setMnemonic] = useState('');
+    const [showHowTo, setShowHowTo] = useState(false);
     const { notes, addNoteToVault, removeNoteFromVault, clearVault } = useVault();
     const navigate = useNavigate();
 
@@ -31,8 +32,17 @@ const Home = () => {
     };
 
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950 transition-colors duration-300 overflow-hidden">
-            <div className="w-full max-w-4xl text-center space-y-12">
+        <motion.div className="min-h-screen flex flex-col items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950 transition-colors duration-300 overflow-hidden">
+            <HowToUseModal open={showHowTo} onClose={() => setShowHowTo(false)} />
+            <motion.div className="relative w-full max-w-4xl text-center space-y-12">
+                <button
+                    type="button"
+                    onClick={() => setShowHowTo(true)}
+                    className="absolute top-0 right-0 z-10 inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-brand-700 dark:text-brand-300 bg-white dark:bg-zinc-900 border border-brand-200 dark:border-brand-800 rounded-full shadow-sm hover:shadow-md hover:border-brand-500 dark:hover:border-brand-500 transition-all"
+                >
+                    <HelpCircle size={18} />
+                    How to use
+                </button>
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -66,7 +76,7 @@ const Home = () => {
                             <Plus size={24} />
                         </div>
                         <h3 className="text-xl font-bold mb-2">Create Note</h3>
-                        <p className="text-zinc-500 dark:text-zinc-400 text-sm">Start a new encrypted thought. You'll define the secret key.</p>
+                        <p className="text-zinc-500 dark:text-zinc-400 text-sm">Set up with a recovery phrase, then a 6-digit PIN for daily access.</p>
                     </motion.div>
 
                     <div className="p-8 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-xl transition-all">
@@ -148,7 +158,7 @@ const Home = () => {
                         <Key size={18} className="text-brand-600" />
                         <span>Recovery Toolkit</span>
                     </div>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 text-center">Generate a seed phrase to use as your Master Key for all notes.</p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 text-center">Generate a 12-word recovery phrase before creating a note. You will need it if you forget your PIN.</p>
                     <div className="flex gap-2">
                         <button
                             onClick={generateRecoveryPhrase}
@@ -183,10 +193,10 @@ const Home = () => {
 
                 <div className="p-4 bg-zinc-100 dark:bg-zinc-900/50 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-3 text-zinc-500 dark:text-zinc-400 text-sm">
                     <Lock size={16} />
-                    <span>Your Secret Key is never stored. Losing it means losing your data.</span>
+                    <span>Your recovery phrase and PIN are never stored on our servers. Losing both means losing your data.</span>
                 </div>
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
     );
 };
 

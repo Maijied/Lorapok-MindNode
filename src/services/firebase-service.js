@@ -49,6 +49,31 @@ export const DB = {
         }
     },
 
+    async getNoteMeta(noteId) {
+        let data = null;
+        try {
+            data = await CacheService.getNote(noteId);
+        } catch {
+            data = null;
+        }
+
+        if (!data?.ciphertext && isFirebaseEnabled) {
+            try {
+                const noteRef = doc(db, 'notes', noteId);
+                const snap = await getDoc(noteRef);
+                if (snap.exists()) data = snap.data();
+            } catch {
+                data = null;
+            }
+        }
+
+        if (!data?.ciphertext) {
+            return { exists: false, pinEnabled: false };
+        }
+
+        return { exists: true, pinEnabled: !!data.pinEnabled };
+    },
+
     async fetchNote(noteId) {
         // 1. Attempt to get from Local Cache first (Instant)
         const cached = await CacheService.getNote(noteId);

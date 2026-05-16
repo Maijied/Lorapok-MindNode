@@ -36,8 +36,13 @@ export const MnemonicService = {
      * Validates if a phrase contains only words from the wordlist.
      */
     validatePhrase(phrase) {
-        const words = phrase.toLowerCase().split(/\s+/);
+        const words = phrase.toLowerCase().trim().split(/\s+/).filter(Boolean);
         if (words.length !== 12) return false;
         return words.every(word => WORDLIST.includes(word));
     }
 };
+
+/** Daily unlock: any exactly 6-digit PIN */
+export function isValidPin(pin) {
+    return /^\d{6}$/.test(pin);
+}

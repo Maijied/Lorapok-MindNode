@@ -5,12 +5,14 @@ A high-security, key-based digital notepad with end-to-end encryption. No accoun
 ## Key Features
 
 - **Zero-knowledge security**: Client-side encryption via Web Crypto API (PBKDF2 + AES-GCM).
-- **Key-based access**: Open notes with a Note ID and a secret key you define.
-- **Recovery phrases**: 12-word mnemonic phrases as an alternative to a secret key.
+- **Recovery-first setup**: New notes require a 12-word recovery phrase, then a 6-digit PIN for daily use.
+- **6-digit PIN access**: Any six digits can be your daily unlock key after setup.
+- **PIN recovery**: Forgot your PIN? Unlock with your recovery phrase to regain access.
 - **Local-first**: IndexedDB cache for fast reads and offline use after load.
 - **PWA-ready**: Service worker and manifest for installable, offline-capable use.
 - **Markdown editor**: Distraction-free writing with live preview and auto-save.
-- **Secure sharing**: Share the note URL; recipients need the same secret key to decrypt.
+- **How to use guide**: In-app modal on the homepage explains the full workflow.
+- **Secure sharing**: Share the note URL; recipients need the PIN or recovery phrase to decrypt.
 
 ## Tech Stack
 
