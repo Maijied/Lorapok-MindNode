@@ -34,7 +34,7 @@ export const CacheService = {
     async getNote(noteId) {
         const db = await this._getDB();
         return new Promise((resolve) => {
-            const tx = db.transaction(HSTORE_NAME, 'readonly');
+            const tx = db.transaction(STORE_NAME, 'readonly');
             const store = tx.objectStore(STORE_NAME);
             const request = store.get(noteId);
             request.onsuccess = () => resolve(request.result);

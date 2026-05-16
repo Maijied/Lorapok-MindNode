@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { lock, Plus, FolderOpen, ShieldCheck, Key, RefreshCw } from 'lucide-react';
+import { Lock, Plus, FolderOpen, ShieldCheck, Key, RefreshCw, Archive, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { DB } from '../services\firebase-service';
-import { MnemonicService } from '../services\mnemonic-service';
-import { useVault } from '../hooks\useVault';
+import { DB } from '../services/firebase-service';
+import { MnemonicService } from '../services/mnemonic-service';
+import { useVault } from '../hooks/useVault';
 
 const Home = () => {
     const [noteId, setNoteId] = useState('');
@@ -182,7 +182,7 @@ const Home = () => {
                 </div>
 
                 <div className="p-4 bg-zinc-100 dark:bg-zinc-900/50 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-3 text-zinc-500 dark:text-zinc-400 text-sm">
-                    <lock size={16} />
+                    <Lock size={16} />
                     <span>Your Secret Key is never stored. Losing it means losing your data.</span>
                 </div>
             </div>

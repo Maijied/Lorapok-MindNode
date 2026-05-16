@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Copy, Share2, Trash2, Download, Upload, Eye, EyeOff, AlertCircle, Clock, Tag, X, FileText, Paperclip } from 'lucide-react';
+import { Lock, Share2, Trash2, Download, Upload, Eye, EyeOff, AlertCircle, Clock, Tag, X, FileText, Paperclip } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CryptoService } from '../services\crypto-service';
-import { MnemonicService } from '../services\mnemonic-service';
-import { DB } from '../services\firebase-service';
-import { useVault } from '../hooks\useVault';
+import { CryptoService } from '../services/crypto-service';
+import { MnemonicService } from '../services/mnemonic-service';
+import { DB } from '../services/firebase-service';
+import { useVault } from '../hooks/useVault';
 import MarkdownPreview from './MarkdownPreview';
 
 const Editor = () => {
@@ -218,7 +218,7 @@ const Editor = () => {
                     className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-8 border border-zinc-200 dark:border-zinc-800 text-center"
                 >
                     <div className="w-16 h-16 bg-brand-100 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                        <lock size={32} />
+                        <Lock size={32} />
                     </div>
                     <h2 className="text-2xl font-bold mb-2">Unlock Note</h2>
                     <p className="text-zinc-500 dark:text-zinc-400 mb-8">Enter your Secret Key or Recovery Phrase.</p>
@@ -271,7 +271,7 @@ const Editor = () => {
                             ← Back to Home
                         </button>
                     </div>
-                </div>
+                </motion.div>
             </div>
         );
     }
@@ -360,7 +360,7 @@ const Editor = () => {
             </AnimatePresence>
             <header className="h-16 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-6 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md z-10">
                 <div className="flex items-center gap-4">
-                    <div onClick={() => navigate('/')} className="cursor-pointer w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold text-xs transition-transform hover:rotate-12">M</div
+                    <motion.div onClick={() => navigate('/')} className="cursor-pointer w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold text-xs transition-transform hover:rotate-12">M</motion.div>
                     <input
                         type="text"
                         value={title}
@@ -384,7 +384,7 @@ const Editor = () => {
                     <button onClick={() => {}} className="p-2 text-zinc-500 hover:text-red-500 rounded-lg transition-colors">
                         <Trash2 size={20} />
                     </button>
-                </div
+                </div>
             </header>
 
             <main className="flex-1 overflow-hidden flex">
@@ -408,7 +408,7 @@ const Editor = () => {
                                 >
                                     {tag}
                                     <X size={10} className="cursor-pointer hover:text-red-500" onClick={() => setTags(tags.filter(t => t !== tag))} />
-                                </motionCspan>
+                                </motion.span>
                             ))}
                             <div className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg px-2 py-1">
                                 <input
@@ -500,7 +500,7 @@ const Editor = () => {
                                 key="editor"
                                 initial={{ opacity: 0, x: 10 }}
                                 animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: - la 10 }}
+                                exit={{ opacity: 0, x: -10 }}
                                 transition={{ duration: 0.2 }}
                                 value={content}
                                 onChange={(e) => setContent(e.target.value)}
@@ -520,7 +520,7 @@ const Editor = () => {
                             </motion.div>
                         )}
                     </AnimatePresence>
-                </div
+                </div>
             </main>
         </div>
     );
