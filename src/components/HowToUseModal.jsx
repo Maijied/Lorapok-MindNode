@@ -4,9 +4,9 @@ import { X, ShieldCheck, Key, Hash, FolderOpen, Share2, AlertTriangle } from 'lu
 
 const steps = [
     { icon: FolderOpen, title: 'Create or open a note', body: 'Create a new note to get a unique Note ID, or paste an existing Note ID to open it.' },
-    { icon: Key, title: 'First time: recovery phrase only', body: 'New notes require a 12-word recovery phrase. Generate one on the home page and store it offline.' },
-    { icon: Hash, title: 'Daily access: 6-digit PIN', body: 'After setup, choose any 6-digit PIN for everyday unlock and auto-save.' },
-    { icon: ShieldCheck, title: 'Lost PIN? Use recovery', body: 'On unlock, switch to Recovery Phrase and enter your original 12 words.' },
+    { icon: Hash, title: 'New note: set a 6-digit PIN', body: 'When you create a note, pick any 6 digits for daily unlock. That is all you need to open and save the note.' },
+    { icon: Key, title: 'Recovery phrase (auto-generated)', body: 'After setting your PIN, copy the 12-word recovery phrase shown once. You only need it if you forget your PIN.' },
+    { icon: ShieldCheck, title: 'Forgot your PIN?', body: 'On unlock, switch to Recovery Phrase and enter those 12 words to regain access.' },
     { icon: Share2, title: 'Share securely', body: 'Share the note link plus the PIN or recovery phrase with someone you trust.' },
     { icon: AlertTriangle, title: 'We cannot reset your keys', body: 'If you lose both the recovery phrase and PIN, the note cannot be recovered.' },
 ];

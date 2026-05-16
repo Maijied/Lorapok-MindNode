@@ -1,18 +1,22 @@
-# Firestore Security Rules
-
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-
-    match /notes/{noteId} {
-      // Since we use a Key-based system without traditional Auth,
-      // any client with the NoteId can read the encrypted blob.
-      // The security is provided by the AES-GCM encryption (E2EE).
-      allow read, write: if true;
-    }
-
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
-}
+# Lorapok MindNode — Firebase security rules
+#
+# Source of truth:
+#   firestore.rules      Firestore (notes collection)
+#   storage.rules        Storage (notes/{noteId}/{fileName})
+#   firebase.json        CLI config
+#   .firebaserc          Project ID (lorapok-mindnode)
+#
+# Deploy from project root:
+#   npm install -g firebase-tools
+#   firebase login
+#   firebase use lorapok-mindnode
+#   firebase deploy --only firestore:rules,storage
+#
+# Or paste rules manually in Firebase Console:
+#   Build → Firestore Database → Rules  (use firestore.rules)
+#   Build → Storage → Rules             (use storage.rules)
+#
+# Security model:
+#   - No Firebase Auth; anyone with a Note ID can read/write encrypted blobs.
+#   - Plaintext never touches the server (AES-GCM in the browser).
+#   - Rules validate note ID format, field names, and payload size limits.

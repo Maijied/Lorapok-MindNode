@@ -20,6 +20,8 @@ const Editor = () => {
     const [showPinSetup, setShowPinSetup] = useState(false);
     const [setupPin, setSetupPin] = useState('');
     const [setupPinConfirm, setSetupPinConfirm] = useState('');
+    const [generatedRecovery, setGeneratedRecovery] = useState('');
+    const [showRecoveryReveal, setShowRecoveryReveal] = useState(false);
     const [isDecrypted, setIsDecrypted] = useState(false);
     const [content, setContent] = useState('');
     const [title, setTitle] = useState('Untitled Note');
@@ -42,20 +44,21 @@ const Editor = () => {
 
     useEffect(() => {
         DB.getNoteMeta(noteId).then(({ exists, pinEnabled: hasPin }) => {
-            setIsNewNote(!exists);
+            const isNew = !exists;
+            setIsNewNote(isNew);
             setPinEnabled(hasPin);
-            setUnlockMode(!exists || !hasPin ? 'recovery' : 'pin');
+            if (isNew) {
+                setShowPinSetup(true);
+                setUnlockMode('pin');
+            } else {
+                setUnlockMode('pin');
+            }
         });
     }, [noteId]);
 
     const handleUnlock = async (e) => {
         e.preventDefault();
         setError('');
-
-        if (isNewNote && unlockMode !== 'recovery') {
-            setError('New notes must be set up with a recovery phrase first.');
-            return;
-        }
 
         if (unlockMode === 'recovery') {
             if (!MnemonicService.validatePhrase(key)) {
@@ -64,11 +67,6 @@ const Editor = () => {
             }
         } else if (!isValidPin(key)) {
             setError('Enter a 6-digit PIN.');
-            return;
-        }
-
-        if (isNewNote) {
-            setShowPinSetup(true);
             return;
         }
 
@@ -132,7 +130,8 @@ const Editor = () => {
         }
 
         try {
-            const recoveryKey = getFinalKey('recovery', key);
+            const recoveryPhrase = MnemonicService.generatePhrase();
+            const recoveryKey = MnemonicService.phraseToKey(recoveryPhrase);
             const recoverySeal = await CryptoService.encrypt(setupPin, recoveryKey);
             const encryptedBody = await CryptoService.encrypt('', setupPin);
             const encryptedTitle = await CryptoService.encrypt('Untitled Note', setupPin);
@@ -155,14 +154,23 @@ const Editor = () => {
             setPinEnabled(true);
             setIsNewNote(false);
             setShowPinSetup(false);
-            setIsDecrypted(true);
-            setContent('');
-            setTitle('Untitled Note');
-            setTags([]);
-            addNoteToVault(noteId, 'Untitled Note');
+            setGeneratedRecovery(recoveryPhrase);
+            setShowRecoveryReveal(true);
+            setSetupPin('');
+            setSetupPinConfirm('');
         } catch (err) {
+            console.error(err);
             setError('Could not set up your PIN. Please try again.');
         }
+    };
+
+    const finishRecoveryReveal = () => {
+        setShowRecoveryReveal(false);
+        setIsDecrypted(true);
+        setContent('');
+        setTitle('Untitled Note');
+        setTags([]);
+        addNoteToVault(noteId, 'Untitled Note');
     };
 
     useEffect(() => {
@@ -304,9 +312,47 @@ const Editor = () => {
         alert("Shareable link copied! Send this link and the 6-digit PIN or recovery phrase to others.");
     };
 
+    if (showRecoveryReveal) {
+        return (
+            <div className="min-h-screen flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-8 border border-zinc-200 dark:border-zinc-800 space-y-6"
+                >
+                    <div className="text-center space-y-2">
+                        <h2 className="text-2xl font-bold">Save your recovery phrase</h2>
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                            Your 6-digit PIN unlocks this note daily. If you forget the PIN, use this 12-word phrase to recover access.
+                        </p>
+                    </div>
+                    <div className="p-4 bg-brand-50 dark:bg-brand-900/20 rounded-2xl border border-brand-200 dark:border-brand-800">
+                        <p className="text-xs font-mono text-brand-800 dark:text-brand-200 break-words leading-relaxed">
+                            {generatedRecovery}
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => { navigator.clipboard.writeText(generatedRecovery); }}
+                        className="w-full py-2 text-sm font-medium text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-800 rounded-xl hover:bg-brand-50 dark:hover:bg-brand-900/20"
+                    >
+                        Copy recovery phrase
+                    </button>
+                    <button
+                        type="button"
+                        onClick={finishRecoveryReveal}
+                        className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl"
+                    >
+                        I saved it — open note
+                    </button>
+                </motion.div>
+            </div>
+        );
+    }
+
     if (showPinSetup) {
         return (
-            <motion.div className="min-h-screen flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
+            <div className="min-h-screen flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -314,7 +360,7 @@ const Editor = () => {
                 >
                     <h2 className="text-2xl font-bold text-center mb-2">Set your 6-digit PIN</h2>
                     <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center mb-6">
-                        Recovery phrase is saved. Choose any 6 digits for daily access to this note.
+                        Choose any 6 digits for daily access. A recovery phrase will be generated next — save it if you forget your PIN.
                     </p>
                     <form onSubmit={handlePinSetup} className="space-y-4">
                         <input
@@ -345,11 +391,18 @@ const Editor = () => {
                             type="submit"
                             className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl"
                         >
-                            Save PIN & open note
+                            Continue
                         </button>
                     </form>
+                    <button
+                        type="button"
+                        onClick={() => navigate('/')}
+                        className="w-full mt-4 text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                    >
+                        ← Back to Home
+                    </button>
                 </motion.div>
-            </motion.div>
+            </div>
         );
     }
 
@@ -364,18 +417,14 @@ const Editor = () => {
                     <div className="w-16 h-16 bg-brand-100 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 rounded-2xl flex items-center justify-center mx-auto mb-6">
                         <Lock size={32} />
                     </div>
-                    <h2 className="text-2xl font-bold mb-2">
-                        {isNewNote ? 'Set up note' : 'Unlock note'}
-                    </h2>
+                    <h2 className="text-2xl font-bold mb-2">Unlock note</h2>
                     <p className="text-zinc-500 dark:text-zinc-400 mb-8 text-sm">
-                        {isNewNote
-                            ? 'Use your 12-word recovery phrase first. You will set a 6-digit PIN next.'
-                            : pinEnabled
-                                ? 'Enter your 6-digit PIN, or switch to recovery phrase if you forgot it.'
-                                : 'Enter your recovery phrase to unlock this note.'}
+                        {pinEnabled
+                            ? 'Enter your 6-digit PIN, or switch to recovery phrase if you forgot it.'
+                            : 'Enter your recovery phrase to unlock this note.'}
                     </p>
 
-                    {!isNewNote && pinEnabled && (
+                    {pinEnabled && (
                         <motion.div className="flex gap-2 mb-6 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl">
                             <button
                                 type="button"
@@ -468,8 +517,8 @@ const Editor = () => {
                                         <p>Your notes are encrypted in your browser before being sent to the server. We never see your secret key or your content.</p>
                                     </div>
                                     <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl border border-zinc-100 dark:border-zinc-800">
-                                        <p className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">🔑 Recovery phrase & 6-digit PIN</p>
-                                        <p>New notes require a <b>12-word recovery phrase</b> first, then a <b>6-digit PIN</b> for daily access. Forgot your PIN? Unlock with the recovery phrase.</p>
+                                        <p className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">🔑 6-digit PIN & recovery phrase</p>
+                                        <p>New notes use a <b>6-digit PIN</b> for daily access. A <b>recovery phrase</b> is generated automatically — use it only if you forget your PIN.</p>
                                     </div>
                                     <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl border border-zinc-100 dark:border-zinc-800">
                                         <p className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">🔗 Secure Sharing</p>
@@ -523,7 +572,13 @@ const Editor = () => {
             </AnimatePresence>
             <header className="h-16 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-6 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md z-10">
                 <div className="flex items-center gap-4">
-                    <motion.div onClick={() => navigate('/')} className="cursor-pointer w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold text-xs transition-transform hover:rotate-12">M</motion.div>
+                    <motion.img
+                        src={`${import.meta.env.BASE_URL}logo-mark.svg`}
+                        alt="Lorapok MindNode home"
+                        onClick={() => navigate('/')}
+                        className="cursor-pointer w-8 h-8 rounded-lg shadow-sm transition-transform hover:rotate-12"
+                        whileTap={{ scale: 0.95 }}
+                    />
                     <input
                         type="text"
                         value={title}

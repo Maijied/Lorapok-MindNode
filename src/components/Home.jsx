@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Plus, FolderOpen, ShieldCheck, Key, RefreshCw, Archive, Trash2, HelpCircle } from 'lucide-react';
+import { Lock, Plus, FolderOpen, Key, RefreshCw, Archive, Trash2, HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DB } from '../services/firebase-service';
 import { MnemonicService } from '../services/mnemonic-service';
@@ -49,8 +49,8 @@ const Home = () => {
                     transition={{ duration: 0.8, ease: "easeOut" }}
                     className="space-y-4"
                 >
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-brand-600 text-white rounded-3xl mb-4 shadow-2xl shadow-brand-500/40 hover:rotate-12 transition-transform duration-300">
-                        <ShieldCheck size={40} />
+                    <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl mb-4 shadow-2xl shadow-brand-500/40 hover:rotate-12 transition-transform duration-300 overflow-hidden">
+                        <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Lorapok MindNode" className="w-full h-full object-cover rounded-3xl" />
                     </div>
                     <h1 className="text-5xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
                         Lorapok <span className="text-brand-600">MindNode</span>
@@ -76,7 +76,7 @@ const Home = () => {
                             <Plus size={24} />
                         </div>
                         <h3 className="text-xl font-bold mb-2">Create Note</h3>
-                        <p className="text-zinc-500 dark:text-zinc-400 text-sm">Set up with a recovery phrase, then a 6-digit PIN for daily access.</p>
+                        <p className="text-zinc-500 dark:text-zinc-400 text-sm">Set a 6-digit PIN for daily access. A recovery phrase is generated for you if you forget it.</p>
                     </motion.div>
 
                     <div className="p-8 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-xl transition-all">
@@ -158,7 +158,7 @@ const Home = () => {
                         <Key size={18} className="text-brand-600" />
                         <span>Recovery Toolkit</span>
                     </div>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 text-center">Generate a 12-word recovery phrase before creating a note. You will need it if you forget your PIN.</p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 text-center">Optional: generate a practice phrase here. When you create a note, a unique recovery phrase is generated automatically after you set your PIN.</p>
                     <div className="flex gap-2">
                         <button
                             onClick={generateRecoveryPhrase}

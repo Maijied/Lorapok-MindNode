@@ -1,0 +1,33 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+  // Encrypted attachment blobs: notes/{noteId}/{fileName}
+  // Same zero-auth model as Firestore — content is encrypted client-side.
+
+    function isValidNoteId(noteId) {
+      return noteId.matches('^[a-z0-9]{8,32}$');
+    }
+
+    function isValidFileName(fileName) {
+      return fileName.size() > 0
+        && fileName.size() <= 255
+        && !fileName.matches('.*[\\\\/].*');
+    }
+
+    match /notes/{noteId}/{fileName} {
+      allow read: if isValidNoteId(noteId) && isValidFileName(fileName);
+
+      allow write: if isValidNoteId(noteId)
+        && isValidFileName(fileName)
+        && request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 10 * 1024 * 1024;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

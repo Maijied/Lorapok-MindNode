@@ -1,0 +1,83 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Lorapok MindNode — zero-auth E2EE notes (ciphertext only on server).
+    // Real access control is the encryption key; rules limit shape, size, and paths.
+
+    function isValidNoteId(noteId) {
+      return noteId.matches('^[a-z0-9]{8,32}$');
+    }
+
+    function isEncryptedBlob(field) {
+      return field is map
+        && field.keys().hasAll(['ciphertext', 'iv', 'salt'])
+        && field.ciphertext is string
+        && field.iv is string
+        && field.salt is string
+        && field.ciphertext.size() > 0
+        && field.ciphertext.size() <= 1048576
+        && field.iv.size() <= 64
+        && field.salt.size() <= 64;
+    }
+
+    function optionalEncryptedBlob(data, fieldName) {
+      return !(fieldName in data) || isEncryptedBlob(data[fieldName]);
+    }
+
+    function isValidNoteData() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['ciphertext', 'iv', 'salt'])
+        && data.ciphertext is string
+        && data.iv is string
+        && data.salt is string
+        && data.ciphertext.size() > 0
+        && data.ciphertext.size() <= 1048576
+        && data.iv.size() <= 64
+        && data.salt.size() <= 64
+        && optionalEncryptedBlob(data, 'encryptedTitle')
+        && optionalEncryptedBlob(data, 'encryptedTags')
+        && optionalEncryptedBlob(data, 'recoverySeal')
+        && (!('pinEnabled' in data) || data.pinEnabled is bool)
+        && (!('ttl' in data) || data.ttl is string || data.ttl is int)
+        && (!('updatedAt' in data) || data.updatedAt is string)
+        && (!('attachments' in data) || data.attachments is list)
+        && data.keys().size() <= 12;
+    }
+
+    function isValidNotePatch() {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'ciphertext', 'iv', 'salt',
+          'encryptedTitle', 'encryptedTags', 'recoverySeal',
+          'pinEnabled', 'ttl', 'updatedAt', 'attachments'
+        ])
+        && (!('ciphertext' in data) || (
+          data.ciphertext is string
+          && data.ciphertext.size() > 0
+          && data.ciphertext.size() <= 1048576
+        ))
+        && (!('iv' in data) || (data.iv is string && data.iv.size() <= 64))
+        && (!('salt' in data) || (data.salt is string && data.salt.size() <= 64))
+        && optionalEncryptedBlob(data, 'encryptedTitle')
+        && optionalEncryptedBlob(data, 'encryptedTags')
+        && optionalEncryptedBlob(data, 'recoverySeal')
+        && (!('pinEnabled' in data) || data.pinEnabled is bool)
+        && (!('ttl' in data) || data.ttl is string || data.ttl is int)
+        && (!('updatedAt' in data) || data.updatedAt is string)
+        && (!('attachments' in data) || data.attachments is list);
+    }
+
+    match /notes/{noteId} {
+      allow read: if isValidNoteId(noteId);
+      allow create: if isValidNoteId(noteId) && isValidNoteData();
+      allow update: if isValidNoteId(noteId) && isValidNotePatch();
+      allow delete: if isValidNoteId(noteId);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

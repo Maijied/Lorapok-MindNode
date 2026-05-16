@@ -198,3 +198,18 @@ flowchart TD
 - **CI/CD**: GitHub Actions on push to `main`.
 - **Secrets**: GitHub Secrets → Vite env vars (`VITE_FIREBASE_*`) → production bundle.
 - **Hosting**: GitHub Pages.
+
+## 10. Firebase Rules
+
+| File | Purpose |
+|------|---------|
+| `firestore.rules` | `notes/{noteId}` read/write with ciphertext validation |
+| `storage.rules` | `notes/{noteId}/{fileName}` for encrypted attachments |
+| `firebase.json` | Wires rules for `firebase deploy` |
+| `firebase-rules.txt` | Deploy instructions (pointer) |
+
+```bash
+firebase deploy --only firestore:rules,storage
+```
+
+Rules allow unauthenticated access to `notes/*` (key-based app) but reject malformed documents and all other paths. Encryption remains the real access control.

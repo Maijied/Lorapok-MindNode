@@ -1,0 +1,25 @@
+<svg width="640" height="160" viewBox="0 0 640 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile" x1="8" y1="8" x2="152" y2="152" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4338ca"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="176" y1="80" x2="400" y2="80" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="144" height="144" rx="32" fill="url(#tile)"/>
+  <g transform="translate(80 88)">
+    <ellipse cx="0" cy="-24" rx="15" ry="13" fill="#0f172a" stroke="#22d3ee" stroke-width="2"/>
+    <circle cx="-5" cy="-25" r="4" fill="#22d3ee"/>
+    <circle cx="5" cy="-25" r="4" fill="#c084fc"/>
+    <ellipse cx="0" cy="-4" rx="14" ry="11" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+    <ellipse cx="0" cy="12" rx="12" ry="9" fill="#0f172a" stroke="#a855f7" stroke-width="1.5"/>
+    <rect x="-7" y="-2" width="14" height="10" rx="2" fill="#312e81" stroke="#67e8f9" stroke-width="1.2"/>
+    <circle cx="0" cy="6" r="2.5" fill="#1e1b4b" stroke="#22d3ee" stroke-width="0.8"/>
+  </g>
+  <text x="176" y="72" font-family="Inter, system-ui, sans-serif" font-size="48" font-weight="700" fill="#18181b">Lorapok</text>
+  <text x="176" y="118" font-family="Inter, system-ui, sans-serif" font-size="48" font-weight="700" fill="url(#accent)">MindNode</text>
+  <text x="178" y="142" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="500" fill="#71717a" letter-spacing="0.12em">SECURE E2EE NOTEPAD</text>
+</svg>
