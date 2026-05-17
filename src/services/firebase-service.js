@@ -1,5 +1,5 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL, deleteObject } from 'firebase/storage';
 import { CacheService } from './cache-service';
 
@@ -40,14 +40,38 @@ export const DB = {
 
         try {
             const noteRef = doc(db, 'notes', noteId);
-            // We use setDoc with merge: true to avoid overwriting existing fields
-            // if the payload only contains a subset of fields.
             await setDoc(noteRef, {
                 ...payload,
                 updatedAt: new Date().toISOString()
             }, { merge: true });
         } catch (err) {
             console.error("[DB] Cloud sync failed:", err);
+        }
+    },
+
+    async deleteNote(noteId, attachments = []) {
+        // 1. Delete from Cache
+        await CacheService.deleteNote(noteId);
+
+        if (!isFirebaseEnabled) return;
+
+        try {
+            // 2. Delete Attachments from Storage
+            for (const file of attachments) {
+                try {
+                    const fileRef = ref(storage, file.url);
+                    await deleteObject(fileRef);
+                } catch (e) {
+                    console.warn("[DB] Could not delete attachment:", file.name, e);
+                }
+            }
+
+            // 3. Delete Document from Firestore
+            const noteRef = doc(db, 'notes', noteId);
+            await deleteDoc(noteRef);
+        } catch (err) {
+            console.error("[DB] Cloud deletion failed:", err);
+            throw err;
         }
     },
 
@@ -65,7 +89,6 @@ export const DB = {
                 const snap = await getDoc(noteRef);
                 if (snap.exists()) {
                     data = snap.data();
-                    // Cache it for future use
                     await CacheService.setNote(noteId, data);
                 }
             } catch {
@@ -88,7 +111,7 @@ export const DB = {
         }
 
         if (!isFirebaseEnabled) {
-            if (cached) return cached; // Might have partial data?
+            if (cached) return cached;
             throw new Error("Note not found in local storage and Cloud Sync is disabled.");
         }
 

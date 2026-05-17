@@ -5,7 +5,7 @@
 
 const DB_NAME = 'mindnode-cache';
 const STORE_NAME = 'notes-cache';
-const DB_VERSION = 2; // Bumped version to ensure onupgradeneeded runs
+const DB_VERSION = 2;
 
 export const CacheService = {
     async setNote(noteId, data) {
@@ -45,6 +45,21 @@ export const CacheService = {
             } catch (err) {
                 console.error("getNote error:", err);
                 resolve(null);
+            }
+        });
+    },
+
+    async deleteNote(noteId) {
+        const db = await this._getDB();
+        return new Promise((resolve, reject) => {
+            try {
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                const request = store.delete(noteId);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            } catch (err) {
+                reject(err);
             }
         });
     },

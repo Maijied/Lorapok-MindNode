@@ -7,11 +7,12 @@ import { MnemonicService, isValidPin } from '../services/mnemonic-service';
 import { DB } from '../services/firebase-service';
 import { useVault } from '../hooks/useVault';
 import MarkdownPreview from './MarkdownPreview';
+import AttachmentGallery from './AttachmentGallery';
 
 const Editor = () => {
     const { noteId } = useParams();
     const navigate = useNavigate();
-    const { addNoteToVault } = useVault();
+    const { addNoteToVault, removeNoteFromVault } = useVault();
 
     const [key, setKey] = useState('');
     const [unlockMode, setUnlockMode] = useState('pin');
@@ -200,6 +201,10 @@ const Editor = () => {
                 ttl: ttl,
                 updatedAt: new Date().toISOString()
             });
+
+            // Sync with Vault
+            addNoteToVault(noteId, title);
+
             setTimeout(() => setIsSaving(false), 500);
         } catch (err) {
             console.error("Save failed", err);
@@ -235,6 +240,18 @@ const Editor = () => {
         }
     };
 
+    const handleDeleteAttachment = async (file) => {
+        if (!window.confirm(`Delete ${file.name}?`)) return;
+        try {
+            await DB.deleteFile(file.url);
+            const updatedAttachments = attachments.filter(a => a.url !== file.url);
+            setAttachments(updatedAttachments);
+            await DB.saveNote(noteId, { attachments: updatedAttachments });
+        } catch (err) {
+            alert("Delete failed: " + err.message);
+        }
+    };
+
     const downloadAttachment = async (file) => {
         const finalKey = getFinalKey(unlockMode, key);
         try {
@@ -242,11 +259,9 @@ const Editor = () => {
             const blob = await response.blob();
             const encryptedBuffer = await blob.arrayBuffer();
 
-            // Decrypt the binary buffer
             const salt = CryptoService.base64ToBuffer(file.salt);
             const iv = CryptoService.base64ToBuffer(file.iv);
 
-            // Re-using deriveKey from CryptoService
             const encoder = new TextEncoder();
             const passwordKey = await window.crypto.subtle.importKey('raw', encoder.encode(finalKey), 'PBKDF2', false, ['deriveKey']);
             const cryptoKey = await window.crypto.subtle.deriveKey(
@@ -303,6 +318,17 @@ const Editor = () => {
             setPreviewFile(window.URL.createObjectURL(new Blob([decrypted])));
         } catch (err) {
             alert("Preview failed: " + err.message);
+        }
+    };
+
+    const handleDeleteNote = async () => {
+        if (!window.confirm("Are you sure you want to permanently delete this note? This action cannot be undone.")) return;
+        try {
+            await DB.deleteNote(noteId, attachments);
+            removeNoteFromVault(noteId);
+            navigate("/");
+        } catch (err) {
+            alert("Deletion failed: " + err.message);
         }
     };
 
@@ -599,7 +625,7 @@ const Editor = () => {
                     <button onClick={handleShare} className="p-2 text-zinc-500 hover:text-brand-600 rounded-lg transition-colors">
                         <Share2 size={20} />
                     </button>
-                    <button onClick={() => {}} className="p-2 text-zinc-500 hover:text-red-500 rounded-lg transition-colors">
+                    <button onClick={handleDeleteNote} className="p-2 text-zinc-500 hover:text-red-500 rounded-lg transition-colors">
                         <Trash2 size={20} />
                     </button>
                 </div>
@@ -641,17 +667,24 @@ const Editor = () => {
                         </div>
                     </div>
 
-                    {/* Attachments Section */}
+                    <AttachmentGallery
+                        attachments={attachments}
+                        onPreview={previewAttachment}
+                        onDownload={downloadAttachment}
+                        onDelete={handleDeleteAttachment}
+                        isUploading={isUploading}
+                    />
+
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
                             <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-                                <Paperclip size={14} /> Attachments
+                                <Upload size={14} /> Upload
                             </h4>
                             <button
                                 onClick={() => fileInputRef.current.click()}
                                 className="p-1 text-brand-600 hover:bg-brand-100 dark:hover:bg-brand-900/50 rounded-md transition-all"
                             >
-                                <Upload size={14} />
+                                <Paperclip size={14} />
                             </button>
                         </div>
                         <input
@@ -660,41 +693,6 @@ const Editor = () => {
                             className="hidden"
                             onChange={handleFileUpload}
                         />
-                        <div className="grid grid-cols-1 gap-2">
-                            {attachments.length === 0 ? (
-                                <p className="text-[10px] text-zinc-400 italic">No attachments yet.</p>
-                            ) : (
-                                attachments.map((file, idx) => (
-                                    <motion.div
-                                        initial={{ opacity: 0, x: -10 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: idx * 0.05 }}
-                                        key={idx}
-                                        className="p-3 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-2xl flex items-center justify-between group hover:border-brand-500 transition-all cursor-pointer"
-                                        onClick={() => previewAttachment(file)}
-                                    >
-                                        <div className="flex items-center gap-3 overflow-hidden">
-                                            <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-700 flex items-center justify-center text-zinc-500 shrink-0">
-                                                {file.name.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) ? <FileText size={14} className="text-brand-500" /> : <FileText size={14} />}
-                                            </div>
-                                            <div className="flex flex-col overflow-hidden">
-                                                <span className="text-xs font-medium truncate max-w-[100px]">{file.name}</span>
-                                                <span className="text-[9px] text-zinc-400">{(file.size / 1024).toFixed(1)} KB</span>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                downloadAttachment(file);
-                                            }}
-                                            className="p-2 text-zinc-400 hover:text-brand-600 transition-colors"
-                                        >
-                                            <Download size={14} />
-                                        </button>
-                                    </motion.div>
-                                ))
-                            )}
-                        </div>
                     </div>
 
                     <div className="space-y-4">
