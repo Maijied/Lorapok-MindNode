@@ -1,16 +1,15 @@
-const CACHE_NAME = 'mindnode-cache-v1';
+const CACHE_NAME = 'lorapok-mindnode-v1';
+
+// We'll use a more dynamic approach for assets in a real PWA,
+// but for now let's ensure core paths are handled.
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/src/main.jsx',
-  '/src/App.jsx',
-  '/src/components/Home.jsx',
-  '/src/components/Editor.jsx',
-  '/src/services/crypto-service.js',
-  '/src/services/firebase-service.js',
-  '/src/services/mnemonic-service.js',
-  '/src/hooks/useVault.js',
-  '/index.css'
+  './',
+  './index.html',
+  './manifest.json',
+  './logo.svg',
+  './logo-mark.svg',
+  './icons/icon-192x192.png',
+  './icons/icon-512x512.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -36,9 +35,10 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Strategy: Network first, fallback to cache
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
+    fetch(event.request).catch(() => {
+      return caches.match(event.request);
     })
   );
 });
