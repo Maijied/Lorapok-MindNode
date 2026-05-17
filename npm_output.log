@@ -1,0 +1,11 @@
+
+> lorapok-mindnode@0.1.0 dev
+> vite
+
+
+  VITE v5.4.21  ready in 349 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+3:10:08 AM [vite] hmr update /src/styles/index.css, /src/components/Home.jsx, /src/components/Editor.jsx
+3:10:08 AM [vite] hmr update /src/styles/index.css, /src/components/Home.jsx, /src/components/Editor.jsx

@@ -1,21 +1,23 @@
 {
   "name": "Lorapok MindNode",
   "short_name": "MindNode",
-  "description": "A zero-knowledge, E2EE notepad.",
+  "description": "Secure, E2EE digital notepad.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#09090b",
-  "theme_color": "#6366f1",
+  "background_color": "#ffffff",
+  "theme_color": "#6366e9",
   "icons": [
     {
-      "src": "pwa-192x192.png",
+      "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
-      "src": "pwa-512x512.png",
+      "src": "/icons/icon-512x512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

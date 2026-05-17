@@ -40,6 +40,8 @@ export const DB = {
 
         try {
             const noteRef = doc(db, 'notes', noteId);
+            // We use setDoc with merge: true to avoid overwriting existing fields
+            // if the payload only contains a subset of fields.
             await setDoc(noteRef, {
                 ...payload,
                 updatedAt: new Date().toISOString()
@@ -61,7 +63,11 @@ export const DB = {
             try {
                 const noteRef = doc(db, 'notes', noteId);
                 const snap = await getDoc(noteRef);
-                if (snap.exists()) data = snap.data();
+                if (snap.exists()) {
+                    data = snap.data();
+                    // Cache it for future use
+                    await CacheService.setNote(noteId, data);
+                }
             } catch {
                 data = null;
             }
@@ -77,11 +83,12 @@ export const DB = {
     async fetchNote(noteId) {
         // 1. Attempt to get from Local Cache first (Instant)
         const cached = await CacheService.getNote(noteId);
-        if (cached) {
+        if (cached && cached.ciphertext) {
             return cached;
         }
 
         if (!isFirebaseEnabled) {
+            if (cached) return cached; // Might have partial data?
             throw new Error("Note not found in local storage and Cloud Sync is disabled.");
         }
 
@@ -110,8 +117,12 @@ export const DB = {
 
     async deleteFile(fileUrl) {
         if (!isFirebaseEnabled) return;
-        const fileRef = ref(storage, fileUrl);
-        await deleteObject(fileRef);
+        try {
+            const fileRef = ref(storage, fileUrl);
+            await deleteObject(fileRef);
+        } catch (err) {
+            console.error("[DB] File deletion failed:", err);
+        }
     },
 
     generateNoteId() {
