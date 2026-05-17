@@ -1,19 +1,23 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Home from './components/Home';
 import Editor from './components/Editor';
 
 const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, '');
 
-// Helper component to handle SPA redirects from 404.html
 function RedirectHandler() {
+    const navigate = useNavigate();
     const location = useLocation();
-    const searchParams = new URLSearchParams(location.search);
-    const redirectPath = searchParams.get('/');
 
-    if (redirectPath) {
-        return <Navigate to={redirectPath} replace />;
-    }
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const redirectPath = params.get('p');
+        if (redirectPath) {
+            // Remove the 'p' param and navigate
+            navigate(redirectPath, { replace: true });
+        }
+    }, [location, navigate]);
+
     return null;
 }
 
