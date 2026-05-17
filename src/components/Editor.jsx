@@ -8,12 +8,10 @@ import { DB } from '../services/firebase-service';
 import { useVault } from '../hooks/useVault';
 import MarkdownPreview from './MarkdownPreview';
 import AttachmentGallery from './AttachmentGallery';
-
 const Editor = () => {
     const { noteId } = useParams();
     const navigate = useNavigate();
     const { addNoteToVault, removeNoteFromVault } = useVault();
-
     const [key, setKey] = useState('');
     const [unlockMode, setUnlockMode] = useState('pin');
     const [isNewNote, setIsNewNote] = useState(false);
@@ -28,21 +26,19 @@ const Editor = () => {
     const [title, setTitle] = useState('Untitled Note');
     const [tags, setTags] = useState([]);
     const [currentTag, setCurrentTag] = useState('');
-    const [isPreview, setIsPreview] = useState(false);
+    const [attachments, setAttachments] = useState([]);
+    const [sessionSalt, setSessionSalt] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState('');
     const [showHelp, setShowHelp] = useState(false);
-    const [ttl, setTtl] = useState('0');
-    const [attachments, setAttachments] = useState([]);
-    const [isUploading, setIsUploading] = useState(false);
+    const [isPreview, setIsPreview] = useState(false);
     const [previewFile, setPreviewFile] = useState(null);
-
+    const [ttl, setTtl] = useState(0);
     const autoSaveTimer = useRef(null);
     const fileInputRef = useRef(null);
-
     const getFinalKey = (mode, input) =>
         mode === 'recovery' ? MnemonicService.phraseToKey(input) : input;
-
     useEffect(() => {
         DB.getNoteMeta(noteId).then(({ exists, pinEnabled: hasPin }) => {
             const isNew = !exists;
@@ -56,7 +52,6 @@ const Editor = () => {
             }
         });
     }, [noteId]);
-
     const handleUnlock = async (e) => {
         e.preventDefault();
         setError('');
@@ -65,39 +60,32 @@ const Editor = () => {
         } else if (unlockMode === 'pin' && !isValidPin(key)) {
             setError('Enter a 6-digit PIN.'); return;
         }
-
         try {
             const data = await DB.fetchNote(noteId);
             let decryptKey = getFinalKey(unlockMode, key);
-
             if (unlockMode === 'recovery' && data.pinEnabled && data.recoverySeal) {
                 const recoveredPin = await CryptoService.decrypt(data.recoverySeal.ciphertext, decryptKey, data.recoverySeal.iv, data.recoverySeal.salt);
                 decryptKey = recoveredPin;
                 setUnlockMode('pin');
                 setKey(recoveredPin);
             }
-
             const decryptedText = await CryptoService.decrypt(data.ciphertext, decryptKey, data.iv, data.salt);
             let finalTitle = title;
             if (data.encryptedTitle) finalTitle = await CryptoService.decrypt(data.encryptedTitle.ciphertext, decryptKey, data.encryptedTitle.iv, data.encryptedTitle.salt);
-
             let finalTags = [];
             if (data.encryptedTags) {
                 const decryptedTagsRaw = await CryptoService.decrypt(data.encryptedTags.ciphertext, decryptKey, data.encryptedTags.iv, data.encryptedTags.salt);
                 finalTags = JSON.parse(decryptedTagsRaw);
             }
-
-            setContent(decryptedText); setTitle(finalTitle); setTags(finalTags); setAttachments(data.attachments || []); setIsDecrypted(true); addNoteToVault(noteId, finalTitle);
+            setSessionSalt(data.salt); setContent(decryptedText); setTitle(finalTitle); setTags(finalTags); setAttachments(data.attachments || []); setIsDecrypted(true); addNoteToVault(noteId, finalTitle);
         } catch (err) {
             setError(unlockMode === 'recovery' ? 'Invalid recovery phrase.' : 'Invalid 6-digit PIN.');
         }
     };
-
     const handlePinSetup = async (e) => {
         e.preventDefault(); setError('');
         if (!isValidPin(setupPin)) { setError('PIN must be exactly 6 digits.'); return; }
         if (setupPin !== setupPinConfirm) { setError('PINs do not match.'); return; }
-
         try {
             const recoveryPhrase = MnemonicService.generatePhrase();
             const recoveryKey = MnemonicService.phraseToKey(recoveryPhrase);
@@ -105,33 +93,28 @@ const Editor = () => {
             const encryptedBody = await CryptoService.encrypt('', setupPin);
             const encryptedTitle = await CryptoService.encrypt('Untitled Note', setupPin);
             const encryptedTags = await CryptoService.encrypt(JSON.stringify([]), setupPin);
-
             await DB.saveNote(noteId, { ciphertext: encryptedBody.ciphertext, iv: encryptedBody.iv, salt: encryptedBody.salt, encryptedTitle, encryptedTags, recoverySeal, attachments: [], pinEnabled: true });
-            setKey(setupPin); setUnlockMode('pin'); setPinEnabled(true); setIsNewNote(false); setShowPinSetup(false); setGeneratedRecovery(recoveryPhrase); setShowRecoveryReveal(true); setSetupPin(''); setSetupPinConfirm('');
+            setSessionSalt(encryptedBody.salt); setKey(setupPin); setUnlockMode('pin'); setPinEnabled(true); setIsNewNote(false); setShowPinSetup(false); setGeneratedRecovery(recoveryPhrase); setShowRecoveryReveal(true); setSetupPin(''); setSetupPinConfirm('');
         } catch (err) { setError('Could not set up your PIN.'); }
     };
-
     const finishRecoveryReveal = () => { setShowRecoveryReveal(false); setIsDecrypted(true); setContent(''); setTitle('Untitled Note'); setTags([]); addNoteToVault(noteId, 'Untitled Note'); };
-
     useEffect(() => {
         if (!isDecrypted) return;
         if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
         autoSaveTimer.current = setTimeout(async () => { await saveNote(); }, 1000);
     }, [content, title, tags]);
-
     const saveNote = async () => {
         setIsSaving(true);
         const finalKey = getFinalKey(unlockMode, key);
         try {
-            const eb = await CryptoService.encrypt(content, finalKey);
-            const et = await CryptoService.encrypt(title, finalKey);
-            const eg = await CryptoService.encrypt(JSON.stringify(tags), finalKey);
+            const eb = await CryptoService.encrypt(content, finalKey, sessionSalt);
+            const et = await CryptoService.encrypt(title, finalKey, sessionSalt || eb.salt);
+            const eg = await CryptoService.encrypt(JSON.stringify(tags), finalKey, sessionSalt || eb.salt);
             await DB.saveNote(noteId, { ciphertext: eb.ciphertext, iv: eb.iv, salt: eb.salt, encryptedTitle: et, encryptedTags: eg, attachments, pinEnabled: true, ttl, updatedAt: new Date().toISOString() });
-            addNoteToVault(noteId, title);
+            if (!sessionSalt) setSessionSalt(eb.salt); addNoteToVault(noteId, title);
             setTimeout(() => setIsSaving(false), 500);
         } catch (err) { setIsSaving(false); }
     };
-
     const handleFileUpload = async (e) => {
         const file = e.target.files[0]; if (!file) return;
         setIsUploading(true);
@@ -140,63 +123,50 @@ const Editor = () => {
             const url = await DB.uploadFile(noteId, file.name, eb.ciphertext);
             const ua = [...attachments, { name: file.name, url, iv: eb.iv, salt: eb.salt, size: file.size }];
             setAttachments(ua); await DB.saveNote(noteId, { attachments: ua });
-        } catch (err) { alert("Upload failed"); } finally { setIsUploading(false); }
+        } catch (err) { alert("File upload failed."); } finally { setIsUploading(false); }
     };
-
-    const handleDeleteAttachment = async (file) => {
-        if (!window.confirm(`Delete ${file.name}?`)) return;
-        try { await DB.deleteFile(file.url); const ua = attachments.filter(a => a.url !== file.url); setAttachments(ua); await DB.saveNote(noteId, { attachments: ua }); } catch (err) { alert("Delete failed"); }
-    };
-
-    const downloadAttachment = async (file) => {
+    const previewAttachment = async (att) => {
         try {
-            const res = await fetch(file.url); const blob = await res.blob(); const eb = await blob.arrayBuffer();
-            const salt = CryptoService.base64ToBuffer(file.salt); const iv = CryptoService.base64ToBuffer(file.iv);
-            const encoder = new TextEncoder();
-            const pk = await window.crypto.subtle.importKey('raw', encoder.encode(getFinalKey(unlockMode, key)), 'PBKDF2', false, ['deriveKey']);
-            const ck = await window.crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, pk, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
-            const decrypted = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, ck, eb);
-            const url = window.URL.createObjectURL(new Blob([decrypted])); const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
-        } catch (err) { alert("Download failed"); }
+            const data = await DB.downloadFile(att.url);
+            const decrypted = await CryptoService.decryptBlob(data, getFinalKey(unlockMode, key), att.iv, att.salt);
+            setPreviewFile(URL.createObjectURL(decrypted));
+        } catch (err) { alert("Could not preview file."); }
     };
-
-    const previewAttachment = async (file) => {
-        if (!file.name.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) { downloadAttachment(file); return; }
+    const downloadAttachment = async (att) => {
         try {
-            const res = await fetch(file.url); const blob = await res.blob(); const eb = await blob.arrayBuffer();
-            const salt = CryptoService.base64ToBuffer(file.salt); const iv = CryptoService.base64ToBuffer(file.iv);
-            const pk = await window.crypto.subtle.importKey('raw', new TextEncoder().encode(getFinalKey(unlockMode, key)), 'PBKDF2', false, ['deriveKey']);
-            const ck = await window.crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, pk, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
-            const decrypted = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, ck, eb);
-            setPreviewFile(window.URL.createObjectURL(new Blob([decrypted])));
-        } catch (err) { alert("Preview failed"); }
+            const data = await DB.downloadFile(att.url);
+            const decrypted = await CryptoService.decryptBlob(data, getFinalKey(unlockMode, key), att.iv, att.salt);
+            const url = URL.createObjectURL(decrypted);
+            const a = document.createElement('a'); a.href = url; a.download = att.name; a.click();
+        } catch (err) { alert("Could not download file."); }
     };
-
+    const handleDeleteAttachment = async (att) => {
+        if (!confirm(`Delete ${att.name}?`)) return;
+        try {
+            await DB.deleteFile(att.url);
+            const ua = attachments.filter(a => a.url !== att.url);
+            setAttachments(ua); await DB.saveNote(noteId, { attachments: ua });
+        } catch (err) { alert("Could not delete file."); }
+    };
+    const handleShare = () => {
+        navigator.clipboard.writeText(window.location.href);
+        alert("Link copied! Share it with someone who has your PIN/phrase.");
+    };
     const handleDeleteNote = async () => {
-        if (!window.confirm("Permanently delete this note?")) return;
-        try { await DB.deleteNote(noteId, attachments); removeNoteFromVault(noteId); navigate("/"); } catch (err) { alert("Deletion failed"); }
+        if (!confirm("Are you sure? This will permanently delete the note and all attachments.")) return;
+        try {
+            for (const att of attachments) await DB.deleteFile(att.url);
+            await DB.deleteNote(noteId);
+            removeNoteFromVault(noteId);
+            navigate('/');
+        } catch (err) { alert("Could not delete note."); }
     };
-
-    const handleShare = async () => {
-        const url = `${window.location.origin}${import.meta.env.BASE_URL}note/${noteId}`;
-        await navigator.clipboard.writeText(url); alert("Shareable link copied!");
-    };
-
-    if (showRecoveryReveal) return (
-        <div className="min-h-screen flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-8 border border-zinc-200 dark:border-zinc-800 space-y-6">
-                <div className="text-center space-y-2"><h2 className="text-2xl font-bold">Save your recovery phrase</h2><p className="text-sm text-zinc-500 dark:text-zinc-400">If you forget the PIN, use this 12-word phrase to recover access.</p></div>
-                <div className="p-4 bg-brand-50 dark:bg-brand-900/20 rounded-2xl border border-brand-200 dark:border-brand-800"><p className="text-xs font-mono text-brand-800 dark:text-brand-200 break-words">{generatedRecovery}</p></div>
-                <button type="button" onClick={() => navigator.clipboard.writeText(generatedRecovery)} className="w-full py-2 text-sm font-medium text-brand-600 border border-brand-200 rounded-xl">Copy recovery phrase</button>
-                <button type="button" onClick={finishRecoveryReveal} className="w-full py-3 bg-brand-600 text-white font-semibold rounded-xl">I saved it — open note</button>
-            </motion.div>
-        </div>
-    );
-
     if (showPinSetup) return (
         <div className="min-h-screen flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-8 border border-zinc-200 dark:border-zinc-800">
-                <h2 className="text-2xl font-bold text-center mb-6">Set your 6-digit PIN</h2>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-8 border border-zinc-200 dark:border-zinc-800">
+                <div className="w-16 h-16 bg-brand-100 dark:bg-brand-900/30 text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-6"><Lock size={32} /></div>
+                <h2 className="text-2xl font-bold text-center mb-2">Secure your note</h2>
+                <p className="text-zinc-500 dark:text-zinc-400 text-center text-sm mb-8">Set a 6-digit PIN to encrypt your thoughts. We'll generate a recovery phrase for you next.</p>
                 <form onSubmit={handlePinSetup} className="space-y-4">
                     <input type="password" inputMode="numeric" maxLength={6} value={setupPin} onChange={(e) => setSetupPin(e.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none text-center text-2xl tracking-[0.5em]" placeholder="••••••" autoFocus />
                     <input type="password" inputMode="numeric" maxLength={6} value={setupPinConfirm} onChange={(e) => setSetupPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none text-center text-2xl tracking-[0.5em]" placeholder="Confirm" />
@@ -207,7 +177,19 @@ const Editor = () => {
             </motion.div>
         </div>
     );
-
+    if (showRecoveryReveal) return (
+        <div className="min-h-screen flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-8 border border-zinc-200 dark:border-zinc-800 text-center">
+                <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-2xl flex items-center justify-center mx-auto mb-6"><FileText size={32} /></div>
+                <h2 className="text-2xl font-bold mb-2">Save your recovery phrase</h2>
+                <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-8">This is the ONLY way to recover your note if you forget your PIN. Write it down and keep it safe.</p>
+                <div className="p-6 bg-brand-50 dark:bg-brand-900/20 rounded-2xl border border-brand-200 dark:border-brand-800 mb-8">
+                    <p className="font-mono text-brand-700 dark:text-brand-300 break-words leading-relaxed">{generatedRecovery}</p>
+                </div>
+                <button onClick={finishRecoveryReveal} className="w-full py-3 bg-zinc-900 dark:bg-brand-600 text-white font-semibold rounded-xl">I've saved it, let's go</button>
+            </motion.div>
+        </div>
+    );
     if (!isDecrypted) return (
         <div className="min-h-screen flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-8 border border-zinc-200 dark:border-zinc-800 text-center">
@@ -231,7 +213,6 @@ const Editor = () => {
             </motion.div>
         </div>
     );
-
     return (
         <div className="h-screen flex flex-col bg-white dark:bg-zinc-950">
             <header className="h-16 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-6 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md z-10">
@@ -295,5 +276,4 @@ const Editor = () => {
         </div>
     );
 };
-
 export default Editor;

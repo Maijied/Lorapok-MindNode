@@ -6,8 +6,19 @@
 const ITERATIONS = 100000;
 const KEY_LEN = 256;
 
+// In-memory cache for derived keys to avoid redundant PBKDF2 computations.
+// Keys are cached based on the combination of password and salt.
+const keyCache = new Map();
+
 export const CryptoService = {
     async deriveKey(password, salt) {
+        const saltB64 = salt instanceof Uint8Array ? this.bufferToBase64(salt) : salt;
+        const cacheKey = `${password}:${saltB64}`;
+
+        if (keyCache.has(cacheKey)) {
+            return keyCache.get(cacheKey);
+        }
+
         const encoder = new TextEncoder();
         const passwordKey = await window.crypto.subtle.importKey(
             'raw',
@@ -17,10 +28,12 @@ export const CryptoService = {
             ['deriveKey']
         );
 
-        return window.crypto.subtle.deriveKey(
+        const saltBuffer = salt instanceof Uint8Array ? salt : this.base64ToBuffer(salt);
+
+        const derivedKey = await window.crypto.subtle.deriveKey(
             {
                 name: 'PBKDF2',
-                salt: salt,
+                salt: saltBuffer,
                 iterations: ITERATIONS,
                 hash: 'SHA-256'
             },
@@ -29,11 +42,16 @@ export const CryptoService = {
             false,
             ['encrypt', 'decrypt']
         );
+
+        keyCache.set(cacheKey, derivedKey);
+        return derivedKey;
     },
 
-    async encrypt(plaintext, password) {
+    async encrypt(plaintext, password, existingSalt = null) {
         const encoder = new TextEncoder();
-        const salt = window.crypto.getRandomValues(new Uint8Array(16));
+        const salt = existingSalt ?
+            (existingSalt instanceof Uint8Array ? existingSalt : this.base64ToBuffer(existingSalt)) :
+            window.crypto.getRandomValues(new Uint8Array(16));
         const iv = window.crypto.getRandomValues(new Uint8Array(12));
 
         const key = await this.deriveKey(password, salt);
@@ -89,6 +107,28 @@ export const CryptoService = {
             iv: this.bufferToBase64(iv),
             salt: this.bufferToBase64(salt)
         };
+    },
+
+    /**
+     * Decrypts a binary blob (for files).
+     */
+    async decryptBlob(blob, password, ivB64, saltB64) {
+        const arrayBuffer = await blob.arrayBuffer();
+        const salt = this.base64ToBuffer(saltB64);
+        const iv = this.base64ToBuffer(ivB64);
+
+        const key = await this.deriveKey(password, salt);
+
+        try {
+            const decrypted = await window.crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: iv },
+                key,
+                arrayBuffer
+            );
+            return new Blob([decrypted]);
+        } catch (e) {
+            throw new Error("File decryption failed.");
+        }
     },
 
     bufferToBase64(buffer) {
