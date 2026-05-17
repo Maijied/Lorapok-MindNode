@@ -5,20 +5,13 @@
 
 const DB_NAME = 'mindnode-cache';
 const STORE_NAME = 'notes-cache';
-const DB_VERSION = 2; // Bumped version to ensure onupgradeneeded runs
+const DB_VERSION = 3; // Bumped version to ensure onupgradeneeded runs
 
 export const CacheService = {
     async setNote(noteId, data) {
         const db = await this._getDB();
-
-        // Merge with existing data if possible
         const existing = await this.getNote(noteId);
-        const mergedData = {
-            ...existing,
-            ...data,
-            id: noteId,
-            cachedAt: new Date().toISOString()
-        };
+        const mergedData = { ...existing, ...data, id: noteId, cachedAt: new Date().toISOString() };
 
         return new Promise((resolve, reject) => {
             try {
@@ -27,9 +20,7 @@ export const CacheService = {
                 const request = store.put(mergedData);
                 request.onsuccess = () => resolve();
                 request.onerror = () => reject(request.error);
-            } catch (err) {
-                reject(err);
-            }
+            } catch (err) { reject(err); }
         });
     },
 
@@ -42,10 +33,7 @@ export const CacheService = {
                 const request = store.get(noteId);
                 request.onsuccess = () => resolve(request.result || null);
                 request.onerror = () => resolve(null);
-            } catch (err) {
-                console.error("getNote error:", err);
-                resolve(null);
-            }
+            } catch (err) { resolve(null); }
         });
     },
 
@@ -58,9 +46,7 @@ export const CacheService = {
                 const request = store.delete(noteId);
                 request.onsuccess = () => resolve();
                 request.onerror = () => reject(request.error);
-            } catch (err) {
-                reject(err);
-            }
+            } catch (err) { reject(err); }
         });
     },
 
@@ -71,32 +57,19 @@ export const CacheService = {
     },
 
     _dbPromise: null,
-
     async _getDB() {
         if (this._dbPromise) return this._dbPromise;
-
         this._dbPromise = new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
-
             request.onupgradeneeded = (e) => {
                 const db = e.target.result;
                 if (!db.objectStoreNames.contains(STORE_NAME)) {
                     db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-                    console.log("[Cache] Object store created.");
                 }
             };
-
-            request.onsuccess = (e) => {
-                resolve(e.target.result);
-            };
-
-            request.onerror = (e) => {
-                this._dbPromise = null;
-                console.error("[Cache] IndexedDB error:", e.target.error);
-                reject(e.target.error);
-            };
+            request.onsuccess = (e) => resolve(e.target.result);
+            request.onerror = (e) => { this._dbPromise = null; reject(e.target.error); };
         });
-
         return this._dbPromise;
     }
 };

@@ -13,7 +13,6 @@ function RedirectHandler() {
         const params = new URLSearchParams(location.search);
         const redirectPath = params.get('p');
         if (redirectPath) {
-            // Remove the 'p' param and navigate
             navigate(redirectPath, { replace: true });
         }
     }, [location, navigate]);

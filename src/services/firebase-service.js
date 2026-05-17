@@ -1,5 +1,5 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL, deleteObject } from 'firebase/storage';
 import { CacheService } from './cache-service';
 
@@ -16,123 +16,60 @@ let app, db, storage;
 let isFirebaseEnabled = false;
 
 try {
-    // Firebase config is only valid if the API Key is present
     if (firebaseConfig.apiKey && firebaseConfig.projectId) {
         app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
         db = getFirestore(app);
         storage = getStorage(app);
         isFirebaseEnabled = true;
-        console.log("[DB] Firebase initialized successfully.");
-    } else {
-        console.warn("[DB] Firebase config missing. App running in Local-Only mode.");
     }
-} catch (err) {
-    console.error("[DB] Firebase initialization failed:", err);
-    isFirebaseEnabled = false;
-}
+} catch (err) { isFirebaseEnabled = false; }
 
 export const DB = {
     async saveNote(noteId, payload) {
-        // Always save to Local Cache first (Local-First)
         await CacheService.setNote(noteId, payload);
-
         if (!isFirebaseEnabled) return;
-
         try {
             const noteRef = doc(db, 'notes', noteId);
-            await setDoc(noteRef, {
-                ...payload,
-                updatedAt: new Date().toISOString()
-            }, { merge: true });
-        } catch (err) {
-            console.error("[DB] Cloud sync failed:", err);
-        }
+            await setDoc(noteRef, { ...payload, updatedAt: new Date().toISOString() }, { merge: true });
+        } catch (err) { console.error("Cloud sync failed", err); }
     },
 
     async deleteNote(noteId, attachments = []) {
-        // 1. Delete from Cache
         await CacheService.deleteNote(noteId);
-
         if (!isFirebaseEnabled) return;
-
         try {
-            // 2. Delete Attachments from Storage
             for (const file of attachments) {
-                try {
-                    const fileRef = ref(storage, file.url);
-                    await deleteObject(fileRef);
-                } catch (e) {
-                    console.warn("[DB] Could not delete attachment:", file.name, e);
-                }
+                try { await deleteObject(ref(storage, file.url)); } catch (e) {}
             }
-
-            // 3. Delete Document from Firestore
-            const noteRef = doc(db, 'notes', noteId);
-            await deleteDoc(noteRef);
-        } catch (err) {
-            console.error("[DB] Cloud deletion failed:", err);
-            throw err;
-        }
+            await deleteDoc(doc(db, 'notes', noteId));
+        } catch (err) { console.error("Cloud deletion failed", err); throw err; }
     },
 
     async getNoteMeta(noteId) {
-        let data = null;
-        try {
-            data = await CacheService.getNote(noteId);
-        } catch {
-            data = null;
-        }
-
+        let data = await CacheService.getNote(noteId);
         if (!data?.ciphertext && isFirebaseEnabled) {
             try {
-                const noteRef = doc(db, 'notes', noteId);
-                const snap = await getDoc(noteRef);
-                if (snap.exists()) {
-                    data = snap.data();
-                    await CacheService.setNote(noteId, data);
-                }
-            } catch {
-                data = null;
-            }
+                const snap = await getDoc(doc(db, 'notes', noteId));
+                if (snap.exists()) { data = snap.data(); await CacheService.setNote(noteId, data); }
+            } catch (err) {}
         }
-
-        if (!data?.ciphertext) {
-            return { exists: false, pinEnabled: false };
-        }
-
+        if (!data?.ciphertext) return { exists: false, pinEnabled: false };
         return { exists: true, pinEnabled: !!data.pinEnabled };
     },
 
     async fetchNote(noteId) {
-        // 1. Attempt to get from Local Cache first (Instant)
         const cached = await CacheService.getNote(noteId);
-        if (cached && cached.ciphertext) {
-            return cached;
-        }
-
-        if (!isFirebaseEnabled) {
-            if (cached) return cached;
-            throw new Error("Note not found in local storage and Cloud Sync is disabled.");
-        }
-
+        if (cached && cached.ciphertext) return cached;
+        if (!isFirebaseEnabled) { if (cached) return cached; throw new Error("Note not found"); }
         try {
-            const noteRef = doc(db, 'notes', noteId);
-            const snap = await getDoc(noteRef);
+            const snap = await getDoc(doc(db, 'notes', noteId));
             if (!snap.exists()) throw new Error("Note not found");
-
-            const data = snap.data();
-            await CacheService.setNote(noteId, data);
-            return data;
-        } catch (err) {
-            console.error("[DB] Cloud fetch failed:", err);
-            throw err;
-        }
+            const data = snap.data(); await CacheService.setNote(noteId, data); return data;
+        } catch (err) { throw err; }
     },
 
     async uploadFile(noteId, fileName, encryptedBlob) {
-        if (!isFirebaseEnabled) {
-            throw new Error("Cloud storage is required for file attachments. Please configure Firebase.");
-        }
+        if (!isFirebaseEnabled) throw new Error("Cloud storage required");
         const fileRef = ref(storage, `notes/${noteId}/${fileName}`);
         await uploadString(fileRef, encryptedBlob, 'base64');
         return await getDownloadURL(fileRef);
@@ -140,12 +77,7 @@ export const DB = {
 
     async deleteFile(fileUrl) {
         if (!isFirebaseEnabled) return;
-        try {
-            const fileRef = ref(storage, fileUrl);
-            await deleteObject(fileRef);
-        } catch (err) {
-            console.error("[DB] File deletion failed:", err);
-        }
+        try { await deleteObject(ref(storage, fileUrl)); } catch (err) {}
     },
 
     generateNoteId() {

@@ -30,9 +30,3 @@
 ## 📉 Failure & Correction Log
 - *Failure*: Tried to use generic `firebaseConfig` in code.
 - *Correction*: Shifted to `.env` and GitHub Action secrets for security.
-
-### [SESSION 03: GitHub Pages SPA Fix]
-- **Context**: Deep links (share links) return 404 on GitHub Pages.
-- **Decision**: Implemented the `spa-github-pages` hack.
-- **Implementation**: Added `public/404.html` for redirection and `RedirectHandler` in `App.jsx` to consume the redirect path.
-- **Path Polish**: Refined Service Worker registration path to use base-aware logic.

@@ -1,15 +1,13 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, Download, Trash2, Eye, X } from 'lucide-react';
+import { FileText, Download, Trash2, Eye } from 'lucide-react';
 
 const AttachmentGallery = ({ attachments, onPreview, onDownload, onDelete, isUploading }) => {
     return (
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-                    Attachments ({attachments.length})
-                </h4>
-            </div>
+            <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                Attachments ({attachments.length})
+            </h4>
 
             <div className="grid grid-cols-1 gap-3">
                 <AnimatePresence>
@@ -35,27 +33,9 @@ const AttachmentGallery = ({ attachments, onPreview, onDownload, onDelete, isUpl
                             </div>
 
                             <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                    onClick={() => onPreview(file)}
-                                    className="p-1.5 text-zinc-400 hover:text-brand-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg transition-all"
-                                    title="Preview"
-                                >
-                                    <Eye size={14} />
-                                </button>
-                                <button
-                                    onClick={() => onDownload(file)}
-                                    className="p-1.5 text-zinc-400 hover:text-brand-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg transition-all"
-                                    title="Download"
-                                >
-                                    <Download size={14} />
-                                </button>
-                                <button
-                                    onClick={() => onDelete(file)}
-                                    className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
-                                    title="Delete"
-                                >
-                                    <Trash2 size={14} />
-                                </button>
+                                <button onClick={() => onPreview(file)} className="p-1.5 text-zinc-400 hover:text-brand-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg transition-all" title="Preview"><Eye size={14} /></button>
+                                <button onClick={() => onDownload(file)} className="p-1.5 text-zinc-400 hover:text-brand-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg transition-all" title="Download"><Download size={14} /></button>
+                                <button onClick={() => onDelete(file)} className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all" title="Delete"><Trash2 size={14} /></button>
                             </div>
                         </motion.div>
                     ))}
@@ -65,13 +45,6 @@ const AttachmentGallery = ({ attachments, onPreview, onDownload, onDelete, isUpl
                     <div className="p-4 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl flex items-center justify-center gap-3">
                         <div className="w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
                         <span className="text-xs text-zinc-500">Uploading...</span>
-                    </div>
-                )}
-
-                {attachments.length === 0 && !isUploading && (
-                    <div className="py-8 border-2 border-dashed border-zinc-100 dark:border-zinc-900 rounded-2xl flex flex-col items-center justify-center text-zinc-400">
-                        <FileText size={24} className="mb-2 opacity-20" />
-                        <p className="text-[10px] italic">No attachments yet.</p>
                     </div>
                 )}
             </div>

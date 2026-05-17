@@ -60,15 +60,10 @@ const Editor = () => {
     const handleUnlock = async (e) => {
         e.preventDefault();
         setError('');
-
-        if (unlockMode === 'recovery') {
-            if (!MnemonicService.validatePhrase(key)) {
-                setError('Enter a valid 12-word recovery phrase.');
-                return;
-            }
-        } else if (!isValidPin(key)) {
-            setError('Enter a 6-digit PIN.');
-            return;
+        if (unlockMode === 'recovery' && !MnemonicService.validatePhrase(key)) {
+            setError('Enter a valid 12-word recovery phrase.'); return;
+        } else if (unlockMode === 'pin' && !isValidPin(key)) {
+            setError('Enter a 6-digit PIN.'); return;
         }
 
         try {
@@ -76,28 +71,15 @@ const Editor = () => {
             let decryptKey = getFinalKey(unlockMode, key);
 
             if (unlockMode === 'recovery' && data.pinEnabled && data.recoverySeal) {
-                const recoveredPin = await CryptoService.decrypt(
-                    data.recoverySeal.ciphertext,
-                    decryptKey,
-                    data.recoverySeal.iv,
-                    data.recoverySeal.salt
-                );
+                const recoveredPin = await CryptoService.decrypt(data.recoverySeal.ciphertext, decryptKey, data.recoverySeal.iv, data.recoverySeal.salt);
                 decryptKey = recoveredPin;
                 setUnlockMode('pin');
                 setKey(recoveredPin);
             }
 
-            const decryptedText = await CryptoService.decrypt(
-                data.ciphertext,
-                decryptKey,
-                data.iv,
-                data.salt
-            );
-
+            const decryptedText = await CryptoService.decrypt(data.ciphertext, decryptKey, data.iv, data.salt);
             let finalTitle = title;
-            if (data.encryptedTitle) {
-                finalTitle = await CryptoService.decrypt(data.encryptedTitle.ciphertext, decryptKey, data.encryptedTitle.iv, data.encryptedTitle.salt);
-            }
+            if (data.encryptedTitle) finalTitle = await CryptoService.decrypt(data.encryptedTitle.ciphertext, decryptKey, data.encryptedTitle.iv, data.encryptedTitle.salt);
 
             let finalTags = [];
             if (data.encryptedTags) {
@@ -105,30 +87,16 @@ const Editor = () => {
                 finalTags = JSON.parse(decryptedTagsRaw);
             }
 
-            setContent(decryptedText);
-            setTitle(finalTitle);
-            setTags(finalTags);
-            setAttachments(data.attachments || []);
-            setIsDecrypted(true);
-            addNoteToVault(noteId, finalTitle);
+            setContent(decryptedText); setTitle(finalTitle); setTags(finalTags); setAttachments(data.attachments || []); setIsDecrypted(true); addNoteToVault(noteId, finalTitle);
         } catch (err) {
-            setError(unlockMode === 'recovery'
-                ? 'Invalid recovery phrase.'
-                : 'Invalid 6-digit PIN. Try recovery phrase if you forgot your PIN.');
+            setError(unlockMode === 'recovery' ? 'Invalid recovery phrase.' : 'Invalid 6-digit PIN.');
         }
     };
 
     const handlePinSetup = async (e) => {
-        e.preventDefault();
-        setError('');
-        if (!isValidPin(setupPin)) {
-            setError('PIN must be exactly 6 digits.');
-            return;
-        }
-        if (setupPin !== setupPinConfirm) {
-            setError('PINs do not match.');
-            return;
-        }
+        e.preventDefault(); setError('');
+        if (!isValidPin(setupPin)) { setError('PIN must be exactly 6 digits.'); return; }
+        if (setupPin !== setupPinConfirm) { setError('PINs do not match.'); return; }
 
         try {
             const recoveryPhrase = MnemonicService.generatePhrase();
@@ -138,606 +106,192 @@ const Editor = () => {
             const encryptedTitle = await CryptoService.encrypt('Untitled Note', setupPin);
             const encryptedTags = await CryptoService.encrypt(JSON.stringify([]), setupPin);
 
-            await DB.saveNote(noteId, {
-                ciphertext: encryptedBody.ciphertext,
-                iv: encryptedBody.iv,
-                salt: encryptedBody.salt,
-                encryptedTitle,
-                encryptedTags,
-                recoverySeal,
-                attachments: [],
-                pinEnabled: true,
-                updatedAt: new Date().toISOString(),
-            });
-
-            setKey(setupPin);
-            setUnlockMode('pin');
-            setPinEnabled(true);
-            setIsNewNote(false);
-            setShowPinSetup(false);
-            setGeneratedRecovery(recoveryPhrase);
-            setShowRecoveryReveal(true);
-            setSetupPin('');
-            setSetupPinConfirm('');
-        } catch (err) {
-            console.error(err);
-            setError('Could not set up your PIN. Please try again.');
-        }
+            await DB.saveNote(noteId, { ciphertext: encryptedBody.ciphertext, iv: encryptedBody.iv, salt: encryptedBody.salt, encryptedTitle, encryptedTags, recoverySeal, attachments: [], pinEnabled: true });
+            setKey(setupPin); setUnlockMode('pin'); setPinEnabled(true); setIsNewNote(false); setShowPinSetup(false); setGeneratedRecovery(recoveryPhrase); setShowRecoveryReveal(true); setSetupPin(''); setSetupPinConfirm('');
+        } catch (err) { setError('Could not set up your PIN.'); }
     };
 
-    const finishRecoveryReveal = () => {
-        setShowRecoveryReveal(false);
-        setIsDecrypted(true);
-        setContent('');
-        setTitle('Untitled Note');
-        setTags([]);
-        addNoteToVault(noteId, 'Untitled Note');
-    };
+    const finishRecoveryReveal = () => { setShowRecoveryReveal(false); setIsDecrypted(true); setContent(''); setTitle('Untitled Note'); setTags([]); addNoteToVault(noteId, 'Untitled Note'); };
 
     useEffect(() => {
         if (!isDecrypted) return;
         if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-        autoSaveTimer.current = setTimeout(async () => {
-            await saveNote();
-        }, 1000);
+        autoSaveTimer.current = setTimeout(async () => { await saveNote(); }, 1000);
     }, [content, title, tags]);
 
     const saveNote = async () => {
         setIsSaving(true);
         const finalKey = getFinalKey(unlockMode, key);
         try {
-            const encryptedBody = await CryptoService.encrypt(content, finalKey);
-            const encryptedTitle = await CryptoService.encrypt(title, finalKey);
-            const encryptedTags = await CryptoService.encrypt(JSON.stringify(tags), finalKey);
-
-            await DB.saveNote(noteId, {
-                ciphertext: encryptedBody.ciphertext,
-                iv: encryptedBody.iv,
-                salt: encryptedBody.salt,
-                encryptedTitle,
-                encryptedTags,
-                attachments,
-                pinEnabled: unlockMode === 'pin' || pinEnabled,
-                ttl: ttl,
-                updatedAt: new Date().toISOString()
-            });
-
-            // Sync with Vault
+            const eb = await CryptoService.encrypt(content, finalKey);
+            const et = await CryptoService.encrypt(title, finalKey);
+            const eg = await CryptoService.encrypt(JSON.stringify(tags), finalKey);
+            await DB.saveNote(noteId, { ciphertext: eb.ciphertext, iv: eb.iv, salt: eb.salt, encryptedTitle: et, encryptedTags: eg, attachments, pinEnabled: true, ttl, updatedAt: new Date().toISOString() });
             addNoteToVault(noteId, title);
-
             setTimeout(() => setIsSaving(false), 500);
-        } catch (err) {
-            console.error("Save failed", err);
-            setIsSaving(false);
-        }
+        } catch (err) { setIsSaving(false); }
     };
 
     const handleFileUpload = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
+        const file = e.target.files[0]; if (!file) return;
         setIsUploading(true);
-        const finalKey = getFinalKey(unlockMode, key);
         try {
-            const encryptedBlob = await CryptoService.encryptBlob(file, finalKey);
-            const downloadUrl = await DB.uploadFile(noteId, file.name, encryptedBlob.ciphertext);
-
-            const newAttachment = {
-                name: file.name,
-                url: downloadUrl,
-                iv: encryptedBlob.iv,
-                salt: encryptedBlob.salt,
-                size: file.size
-            };
-
-            const updatedAttachments = [...attachments, newAttachment];
-            setAttachments(updatedAttachments);
-            await DB.saveNote(noteId, { attachments: updatedAttachments });
-        } catch (err) {
-            alert("File upload failed: " + err.message);
-        } finally {
-            setIsUploading(false);
-        }
+            const eb = await CryptoService.encryptBlob(file, getFinalKey(unlockMode, key));
+            const url = await DB.uploadFile(noteId, file.name, eb.ciphertext);
+            const ua = [...attachments, { name: file.name, url, iv: eb.iv, salt: eb.salt, size: file.size }];
+            setAttachments(ua); await DB.saveNote(noteId, { attachments: ua });
+        } catch (err) { alert("Upload failed"); } finally { setIsUploading(false); }
     };
 
     const handleDeleteAttachment = async (file) => {
         if (!window.confirm(`Delete ${file.name}?`)) return;
-        try {
-            await DB.deleteFile(file.url);
-            const updatedAttachments = attachments.filter(a => a.url !== file.url);
-            setAttachments(updatedAttachments);
-            await DB.saveNote(noteId, { attachments: updatedAttachments });
-        } catch (err) {
-            alert("Delete failed: " + err.message);
-        }
+        try { await DB.deleteFile(file.url); const ua = attachments.filter(a => a.url !== file.url); setAttachments(ua); await DB.saveNote(noteId, { attachments: ua }); } catch (err) { alert("Delete failed"); }
     };
 
     const downloadAttachment = async (file) => {
-        const finalKey = getFinalKey(unlockMode, key);
         try {
-            const response = await fetch(file.url);
-            const blob = await response.blob();
-            const encryptedBuffer = await blob.arrayBuffer();
-
-            const salt = CryptoService.base64ToBuffer(file.salt);
-            const iv = CryptoService.base64ToBuffer(file.iv);
-
+            const res = await fetch(file.url); const blob = await res.blob(); const eb = await blob.arrayBuffer();
+            const salt = CryptoService.base64ToBuffer(file.salt); const iv = CryptoService.base64ToBuffer(file.iv);
             const encoder = new TextEncoder();
-            const passwordKey = await window.crypto.subtle.importKey('raw', encoder.encode(finalKey), 'PBKDF2', false, ['deriveKey']);
-            const cryptoKey = await window.crypto.subtle.deriveKey(
-                { name: 'PBKDF2', salt: salt, iterations: 100000, hash: 'SHA-256' },
-                passwordKey,
-                { name: 'AES-GCM', length: 256 },
-                false,
-                ['decrypt']
-            );
-
-            const decrypted = await window.crypto.subtle.decrypt(
-                { name: 'AES-GCM', iv: iv },
-                cryptoKey,
-                encryptedBuffer
-            );
-
-            const url = window.URL.createObjectURL(new Blob([decrypted]));
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = file.name;
-            a.click();
-        } catch (err) {
-            alert("Decryption failed. Your key might be incorrect.");
-        }
+            const pk = await window.crypto.subtle.importKey('raw', encoder.encode(getFinalKey(unlockMode, key)), 'PBKDF2', false, ['deriveKey']);
+            const ck = await window.crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, pk, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+            const decrypted = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, ck, eb);
+            const url = window.URL.createObjectURL(new Blob([decrypted])); const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
+        } catch (err) { alert("Download failed"); }
     };
 
     const previewAttachment = async (file) => {
-        if (!file.name.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
-            downloadAttachment(file);
-            return;
-        }
-
-        const finalKey = getFinalKey(unlockMode, key);
+        if (!file.name.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) { downloadAttachment(file); return; }
         try {
-            const response = await fetch(file.url);
-            const blob = await response.blob();
-            const encryptedBuffer = await blob.arrayBuffer();
-            const salt = CryptoService.base64ToBuffer(file.salt);
-            const iv = CryptoService.base64ToBuffer(file.iv);
-            const encoder = new TextEncoder();
-            const passwordKey = await window.crypto.subtle.importKey('raw', encoder.encode(finalKey), 'PBKDF2', false, ['deriveKey']);
-            const cryptoKey = await window.crypto.subtle.deriveKey(
-                { name: 'PBKDF2', salt: salt, iterations: 100000, hash: 'SHA-256' },
-                passwordKey,
-                { name: 'AES-GCM', length: 256 },
-                false,
-                ['decrypt']
-            );
-            const decrypted = await window.crypto.subtle.decrypt(
-                { name: 'AES-GCM', iv: iv },
-                cryptoKey,
-                encryptedBuffer
-            );
+            const res = await fetch(file.url); const blob = await res.blob(); const eb = await blob.arrayBuffer();
+            const salt = CryptoService.base64ToBuffer(file.salt); const iv = CryptoService.base64ToBuffer(file.iv);
+            const pk = await window.crypto.subtle.importKey('raw', new TextEncoder().encode(getFinalKey(unlockMode, key)), 'PBKDF2', false, ['deriveKey']);
+            const ck = await window.crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, pk, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+            const decrypted = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, ck, eb);
             setPreviewFile(window.URL.createObjectURL(new Blob([decrypted])));
-        } catch (err) {
-            alert("Preview failed: " + err.message);
-        }
+        } catch (err) { alert("Preview failed"); }
     };
 
     const handleDeleteNote = async () => {
-        if (!window.confirm("Are you sure you want to permanently delete this note? This action cannot be undone.")) return;
-        try {
-            await DB.deleteNote(noteId, attachments);
-            removeNoteFromVault(noteId);
-            navigate("/");
-        } catch (err) {
-            alert("Deletion failed: " + err.message);
-        }
+        if (!window.confirm("Permanently delete this note?")) return;
+        try { await DB.deleteNote(noteId, attachments); removeNoteFromVault(noteId); navigate("/"); } catch (err) { alert("Deletion failed"); }
     };
 
     const handleShare = async () => {
         const url = `${window.location.origin}${import.meta.env.BASE_URL}note/${noteId}`;
-        await navigator.clipboard.writeText(url);
-        alert("Shareable link copied! Send this link and the 6-digit PIN or recovery phrase to others.");
+        await navigator.clipboard.writeText(url); alert("Shareable link copied!");
     };
 
-    if (showRecoveryReveal) {
-        return (
-            <div className="min-h-screen flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-8 border border-zinc-200 dark:border-zinc-800 space-y-6"
-                >
-                    <div className="text-center space-y-2">
-                        <h2 className="text-2xl font-bold">Save your recovery phrase</h2>
-                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                            Your 6-digit PIN unlocks this note daily. If you forget the PIN, use this 12-word phrase to recover access.
-                        </p>
-                    </div>
-                    <div className="p-4 bg-brand-50 dark:bg-brand-900/20 rounded-2xl border border-brand-200 dark:border-brand-800">
-                        <p className="text-xs font-mono text-brand-800 dark:text-brand-200 break-words leading-relaxed">
-                            {generatedRecovery}
-                        </p>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => { navigator.clipboard.writeText(generatedRecovery); }}
-                        className="w-full py-2 text-sm font-medium text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-800 rounded-xl hover:bg-brand-50 dark:hover:bg-brand-900/20"
-                    >
-                        Copy recovery phrase
-                    </button>
-                    <button
-                        type="button"
-                        onClick={finishRecoveryReveal}
-                        className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl"
-                    >
-                        I saved it — open note
-                    </button>
-                </motion.div>
-            </div>
-        );
-    }
+    if (showRecoveryReveal) return (
+        <div className="min-h-screen flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-8 border border-zinc-200 dark:border-zinc-800 space-y-6">
+                <div className="text-center space-y-2"><h2 className="text-2xl font-bold">Save your recovery phrase</h2><p className="text-sm text-zinc-500 dark:text-zinc-400">If you forget the PIN, use this 12-word phrase to recover access.</p></div>
+                <div className="p-4 bg-brand-50 dark:bg-brand-900/20 rounded-2xl border border-brand-200 dark:border-brand-800"><p className="text-xs font-mono text-brand-800 dark:text-brand-200 break-words">{generatedRecovery}</p></div>
+                <button type="button" onClick={() => navigator.clipboard.writeText(generatedRecovery)} className="w-full py-2 text-sm font-medium text-brand-600 border border-brand-200 rounded-xl">Copy recovery phrase</button>
+                <button type="button" onClick={finishRecoveryReveal} className="w-full py-3 bg-brand-600 text-white font-semibold rounded-xl">I saved it — open note</button>
+            </motion.div>
+        </div>
+    );
 
-    if (showPinSetup) {
-        return (
-            <div className="min-h-screen flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-8 border border-zinc-200 dark:border-zinc-800"
-                >
-                    <h2 className="text-2xl font-bold text-center mb-2">Set your 6-digit PIN</h2>
-                    <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center mb-6">
-                        Choose any 6 digits for daily access. A recovery phrase will be generated next — save it if you forget your PIN.
-                    </p>
-                    <form onSubmit={handlePinSetup} className="space-y-4">
-                        <input
-                            type="password"
-                            inputMode="numeric"
-                            maxLength={6}
-                            value={setupPin}
-                            onChange={(e) => setSetupPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                            className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-brand-500 text-center text-2xl tracking-[0.5em]"
-                            placeholder="••••••"
-                            autoFocus
-                        />
-                        <input
-                            type="password"
-                            inputMode="numeric"
-                            maxLength={6}
-                            value={setupPinConfirm}
-                            onChange={(e) => setSetupPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                            className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-brand-500 text-center text-2xl tracking-[0.5em]"
-                            placeholder="Confirm"
-                        />
-                        {error && (
-                            <p className="text-red-500 text-sm text-center flex items-center justify-center gap-1">
-                                <AlertCircle size={14} /> {error}
-                            </p>
-                        )}
-                        <button
-                            type="submit"
-                            className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl"
-                        >
-                            Continue
-                        </button>
-                    </form>
-                    <button
-                        type="button"
-                        onClick={() => navigate('/')}
-                        className="w-full mt-4 text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
-                    >
-                        ← Back to Home
-                    </button>
-                </motion.div>
-            </div>
-        );
-    }
+    if (showPinSetup) return (
+        <div className="min-h-screen flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-8 border border-zinc-200 dark:border-zinc-800">
+                <h2 className="text-2xl font-bold text-center mb-6">Set your 6-digit PIN</h2>
+                <form onSubmit={handlePinSetup} className="space-y-4">
+                    <input type="password" inputMode="numeric" maxLength={6} value={setupPin} onChange={(e) => setSetupPin(e.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none text-center text-2xl tracking-[0.5em]" placeholder="••••••" autoFocus />
+                    <input type="password" inputMode="numeric" maxLength={6} value={setupPinConfirm} onChange={(e) => setSetupPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none text-center text-2xl tracking-[0.5em]" placeholder="Confirm" />
+                    {error && <p className="text-red-500 text-sm text-center flex items-center justify-center gap-1"><AlertCircle size={14} /> {error}</p>}
+                    <button type="submit" className="w-full py-3 bg-brand-600 text-white font-semibold rounded-xl">Continue</button>
+                </form>
+                <button type="button" onClick={() => navigate('/')} className="w-full mt-4 text-sm text-zinc-400 hover:text-zinc-600">← Back to Home</button>
+            </motion.div>
+        </div>
+    );
 
-    if (!isDecrypted) {
-        return (
-            <div className="min-h-screen flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950 transition-colors duration-300">
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-8 border border-zinc-200 dark:border-zinc-800 text-center"
-                >
-                    <div className="w-16 h-16 bg-brand-100 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                        <Lock size={32} />
+    if (!isDecrypted) return (
+        <div className="min-h-screen flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-8 border border-zinc-200 dark:border-zinc-800 text-center">
+                <div className="w-16 h-16 bg-brand-100 dark:bg-brand-900/30 text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-6"><Lock size={32} /></div>
+                <h2 className="text-2xl font-bold mb-8">Unlock note</h2>
+                {pinEnabled && (
+                    <div className="flex gap-2 mb-6 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl">
+                        <button type="button" onClick={() => { setUnlockMode('pin'); setKey(''); setError(''); }} className={`flex-1 py-2 text-xs font-bold rounded-lg ${unlockMode === 'pin' ? 'bg-white dark:bg-zinc-700 shadow-sm text-brand-600' : 'text-zinc-500'}`}>6-digit PIN</button>
+                        <button type="button" onClick={() => { setUnlockMode('recovery'); setKey(''); setError(''); }} className={`flex-1 py-2 text-xs font-bold rounded-lg ${unlockMode === 'recovery' ? 'bg-white dark:bg-zinc-700 shadow-sm text-brand-600' : 'text-zinc-500'}`}>Recovery phrase</button>
                     </div>
-                    <h2 className="text-2xl font-bold mb-2">Unlock note</h2>
-                    <p className="text-zinc-500 dark:text-zinc-400 mb-8 text-sm">
-                        {pinEnabled
-                            ? 'Enter your 6-digit PIN, or switch to recovery phrase if you forgot it.'
-                            : 'Enter your recovery phrase to unlock this note.'}
-                    </p>
-
-                    {pinEnabled && (
-                        <motion.div className="flex gap-2 mb-6 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl">
-                            <button
-                                type="button"
-                                onClick={() => { setUnlockMode('pin'); setKey(''); setError(''); }}
-                                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${unlockMode === 'pin' ? 'bg-white dark:bg-zinc-700 shadow-sm text-brand-600' : 'text-zinc-500'}`}
-                            >
-                                6-digit PIN
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { setUnlockMode('recovery'); setKey(''); setError(''); }}
-                                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${unlockMode === 'recovery' ? 'bg-white dark:bg-zinc-700 shadow-sm text-brand-600' : 'text-zinc-500'}`}
-                            >
-                                Recovery phrase
-                            </button>
-                        </motion.div>
-                    )}
-
-                    <form onSubmit={handleUnlock} className="space-y-4">
-                        <input
-                            type={unlockMode === 'recovery' ? 'text' : 'password'}
-                            inputMode={unlockMode === 'pin' ? 'numeric' : 'text'}
-                            maxLength={unlockMode === 'pin' ? 6 : undefined}
-                            value={key}
-                            onChange={(e) => {
-                                const v = unlockMode === 'pin'
-                                    ? e.target.value.replace(/\D/g, '').slice(0, 6)
-                                    : e.target.value;
-                                setKey(v);
-                            }}
-                            className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-brand-500 transition-all text-center text-lg tracking-widest"
-                            placeholder={unlockMode === 'recovery' ? '12 word recovery phrase...' : '6-digit PIN'}
-                            autoFocus
-                        />
-                        {error && (
-                            <motion.div
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="flex items-center gap-2 text-red-500 text-sm justify-center"
-                            >
-                                <AlertCircle size={14} /> {error}
-                            </motion.div>
-                        )}
-                        <button
-                            type="submit"
-                            className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-all transform active:scale-95"
-                        >
-                            Decrypt & Open
-                        </button>
-                    </form>
-                    <div className="mt-6 flex flex-col gap-3">
-                        <button onClick={() => setShowHelp(true)} className="text-sm text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors font-medium">
-                            How does this work?
-                        </button>
-                        <button onClick={() => navigate('/')} className="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-                            ← Back to Home
-                        </button>
-                    </div>
-                </motion.div>
-            </div>
-        );
-    }
+                )}
+                <form onSubmit={handleUnlock} className="space-y-4">
+                    <input type={unlockMode === 'recovery' ? 'text' : 'password'} inputMode={unlockMode === 'pin' ? 'numeric' : 'text'} maxLength={unlockMode === 'pin' ? 6 : undefined} value={key} onChange={(e) => setKey(unlockMode === 'pin' ? e.target.value.replace(/\D/g, '').slice(0, 6) : e.target.value)} className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none text-center text-lg tracking-widest" placeholder={unlockMode === 'recovery' ? '12 word recovery phrase...' : '6-digit PIN'} autoFocus />
+                    {error && <div className="flex items-center gap-2 text-red-500 text-sm justify-center"><AlertCircle size={14} /> {error}</div>}
+                    <button type="submit" className="w-full py-3 bg-brand-600 text-white font-semibold rounded-xl">Decrypt & Open</button>
+                </form>
+                <div className="mt-6 flex flex-col gap-3">
+                    <button onClick={() => setShowHelp(true)} className="text-sm text-brand-600 font-medium">How does this work?</button>
+                    <button onClick={() => navigate('/')} className="text-sm text-zinc-400">← Back to Home</button>
+                </div>
+            </motion.div>
+        </div>
+    );
 
     return (
-        <div className="h-screen flex flex-col bg-white dark:bg-zinc-950 transition-colors duration-300">
-            <AnimatePresence>
-                {showHelp && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-zinc-900/60 backdrop-blur-sm"
-                    >
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                            animate={{ scale: 1, opacity: 1, y: 0 }}
-                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                            className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden"
-                        >
-                            <div className="p-8 space-y-6">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-xl font-bold">How it Works</h3>
-                                    <button onClick={() => setShowHelp(false)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
-                                        <X size={20} />
-                                    </button>
-                                </div>
-                                <div className="space-y-4 text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                                    <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl border border-zinc-100 dark:border-zinc-800">
-                                        <p className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">🔐 Zero-Knowledge Encryption</p>
-                                        <p>Your notes are encrypted in your browser before being sent to the server. We never see your secret key or your content.</p>
-                                    </div>
-                                    <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl border border-zinc-100 dark:border-zinc-800">
-                                        <p className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">🔑 6-digit PIN & recovery phrase</p>
-                                        <p>New notes use a <b>6-digit PIN</b> for daily access. A <b>recovery phrase</b> is generated automatically — use it only if you forget your PIN.</p>
-                                    </div>
-                                    <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl border border-zinc-100 dark:border-zinc-800">
-                                        <p className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">🔗 Secure Sharing</p>
-                                        <p>Share the Note ID link and the PIN or recovery phrase with someone you trust. They can then decrypt and view the note.</p>
-                                    </div>
-                                    <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl border border-zinc-100 dark:border-zinc-800">
-                                        <p className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">⏱️ Self-Destruct</p>
-                                        <p>Set an expiry time (TTL) for your notes. Once it expires, the note is permanently removed from the server.</p>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => setShowHelp(false)}
-                                    className="w-full py-3 bg-brand-600 text-white font-semibold rounded-xl hover:bg-brand-700 transition-all"
-                                >
-                                    Got it!
-                                </button>
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-            <AnimatePresence>
-                {previewFile && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-zinc-950/90 backdrop-blur-md"
-                        onClick={() => setPreviewFile(null)}
-                    >
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.9, opacity: 0 }}
-                            className="relative max-w-4xl max-h-full"
-                        >
-                            <img
-                                src={previewFile}
-                                alt="Preview"
-                                className="rounded-2xl shadow-2xl max-w-full max-h-[80vh] object-contain"
-                            />
-                            <button
-                                onClick={() => setPreviewFile(null)}
-                                className="absolute -top-12 right-0 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-colors"
-                            >
-                                <X size={24} />
-                            </button>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+        <div className="h-screen flex flex-col bg-white dark:bg-zinc-950">
             <header className="h-16 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-6 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md z-10">
                 <div className="flex items-center gap-4">
-                    <motion.img
-                        src={`${import.meta.env.BASE_URL}logo-mark.svg`}
-                        alt="Lorapok MindNode home"
-                        onClick={() => navigate('/')}
-                        className="cursor-pointer w-8 h-8 rounded-lg shadow-sm transition-transform hover:rotate-12"
-                        whileTap={{ scale: 0.95 }}
-                    />
-                    <input
-                        type="text"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        className="bg-transparent font-bold text-lg outline-none focus:ring-0 placeholder-zinc-300 dark:placeholder-zinc-600"
-                        placeholder="Untitled Note"
-                    />
+                    <motion.img src={`${import.meta.env.BASE_URL}logo-mark.svg`} alt="Lorapok MindNode home" onClick={() => navigate('/')} className="cursor-pointer w-8 h-8 rounded-lg" whileTap={{ scale: 0.95 }} />
+                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="bg-transparent font-bold text-lg outline-none placeholder-zinc-300" placeholder="Untitled Note" />
                 </div>
-
                 <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-xs font-medium">
-                        {isSaving ? <div className="w-2 h-2 bg-brand-500 rounded-full animate-pulse"></div> : <div className="w-2 h-2 bg-green-500 rounded-full"></div>}
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 text-xs font-medium">
+                        <div className={`w-2 h-2 rounded-full ${isSaving ? 'bg-brand-500 animate-pulse' : 'bg-green-500'}`}></div>
                         {isSaving ? 'Saving...' : 'Saved'}
                     </div>
-                    <button onClick={() => setIsPreview(!isPreview)} className={`p-2 rounded-lg transition-all ${isPreview ? 'bg-brand-100 dark:bg-brand-900 text-brand-600' : 'text-zinc-500 hover:text-brand-600'}`}>
-                        {isPreview ? <EyeOff size={20} /> : <Eye size={20} />}
-                    </button>
-                    <button onClick={handleShare} className="p-2 text-zinc-500 hover:text-brand-600 rounded-lg transition-colors">
-                        <Share2 size={20} />
-                    </button>
-                    <button onClick={handleDeleteNote} className="p-2 text-zinc-500 hover:text-red-500 rounded-lg transition-colors">
-                        <Trash2 size={20} />
-                    </button>
+                    <button onClick={() => setIsPreview(!isPreview)} className={`p-2 rounded-lg ${isPreview ? 'bg-brand-100 text-brand-600' : 'text-zinc-500'}`}>{isPreview ? <EyeOff size={20} /> : <Eye size={20} />}</button>
+                    <button onClick={handleShare} className="p-2 text-zinc-500 hover:text-brand-600 rounded-lg"><Share2 size={20} /></button>
+                    <button onClick={handleDeleteNote} className="p-2 text-zinc-500 hover:text-red-500 rounded-lg"><Trash2 size={20} /></button>
                 </div>
             </header>
-
             <main className="flex-1 overflow-hidden flex">
-                <motion.div
-                    initial={{ x: -20, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    className="w-72 border-r border-zinc-200 dark:border-zinc-800 p-6 space-y-8 bg-zinc-50/50 dark:bg-zinc-900/50 overflow-y-auto"
-                >
-                    {/* Tags Section */}
+                <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="w-72 border-r border-zinc-200 dark:border-zinc-800 p-6 space-y-8 bg-zinc-50/50 dark:bg-zinc-900/50 overflow-y-auto">
                     <div className="space-y-4">
-                        <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-                            <Tag size={14} /> Tags
-                        </h4>
+                        <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2"><Tag size={14} /> Tags</h4>
                         <div className="flex flex-wrap gap-2">
                             {tags.map(tag => (
-                                <motion.span
-                                    initial={{ scale: 0.8, opacity: 0 }}
-                                    animate={{ scale: 1, opacity: 1 }}
-                                    key={tag}
-                                    className="px-2 py-1 bg-brand-100 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 text-xs rounded-lg flex items-center gap-1"
-                                >
-                                    {tag}
-                                    <X size={10} className="cursor-pointer hover:text-red-500" onClick={() => setTags(tags.filter(t => t !== tag))} />
+                                <motion.span key={tag} className="px-2 py-1 bg-brand-100 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 text-xs rounded-lg flex items-center gap-1">
+                                    {tag} <X size={10} className="cursor-pointer hover:text-red-500" onClick={() => setTags(tags.filter(t => t !== tag))} />
                                 </motion.span>
                             ))}
-                            <div className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg px-2 py-1">
-                                <input
-                                    type="text"
-                                    value={currentTag}
-                                    onChange={(e) => setCurrentTag(e.target.value)}
-                                    onKeyDown={(e) => { if(e.key === 'Enter') { setTags([...tags, currentTag]); setCurrentTag(''); } }}
-                                    className="bg-transparent outline-none text-xs w-20"
-                                    placeholder="Add tag..."
-                                />
-                            </div>
+                            <input type="text" value={currentTag} onChange={(e) => setCurrentTag(e.target.value)} onKeyDown={(e) => { if(e.key === 'Enter') { setTags([...tags, currentTag]); setCurrentTag(''); } }} className="bg-transparent outline-none text-xs w-20 bg-zinc-100 dark:bg-zinc-800 rounded-lg px-2 py-1" placeholder="Add tag..." />
                         </div>
                     </div>
-
-                    <AttachmentGallery
-                        attachments={attachments}
-                        onPreview={previewAttachment}
-                        onDownload={downloadAttachment}
-                        onDelete={handleDeleteAttachment}
-                        isUploading={isUploading}
-                    />
-
+                    <AttachmentGallery attachments={attachments} onPreview={previewAttachment} onDownload={downloadAttachment} onDelete={handleDeleteAttachment} isUploading={isUploading} />
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-                                <Upload size={14} /> Upload
-                            </h4>
-                            <button
-                                onClick={() => fileInputRef.current.click()}
-                                className="p-1 text-brand-600 hover:bg-brand-100 dark:hover:bg-brand-900/50 rounded-md transition-all"
-                            >
-                                <Paperclip size={14} />
-                            </button>
-                        </div>
-                        <input
-                            type="file"
-                            ref={fileInputRef}
-                            className="hidden"
-                            onChange={handleFileUpload}
-                        />
+                        <div className="flex items-center justify-between"><h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2"><Upload size={14} /> Upload</h4><button onClick={() => fileInputRef.current.click()} className="p-1 text-brand-600 hover:bg-brand-100 rounded-md"><Paperclip size={14} /></button></div>
+                        <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
                     </div>
-
                     <div className="space-y-4">
-                        <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-                            <Clock size={14} /> Expiry (Hours)
-                        </h4>
-                        <input
-                            type="number"
-                            value={ttl}
-                            onChange={(e) => setTtl(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 outline-none text-sm"
-                            placeholder="0 = Permanent"
-                        />
+                        <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2"><Clock size={14} /> Expiry (Hours)</h4>
+                        <input type="number" value={ttl} onChange={(e) => setTtl(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 outline-none text-sm" placeholder="0 = Permanent" />
                     </div>
                 </motion.div>
-
                 <div className="flex-1 h-full relative">
                     <AnimatePresence mode="wait">
                         {!isPreview ? (
-                            <motion.textarea
-                                key="editor"
-                                initial={{ opacity: 0, x: 10 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -10 }}
-                                transition={{ duration: 0.2 }}
-                                value={content}
-                                onChange={(e) => setContent(e.target.value)}
-                                placeholder="Write in Markdown... ✍️"
-                                className="w-full h-full p-8 md:p-12 lg:p-24 resize-none bg-transparent outline-none text-xl leading-relaxed placeholder-zinc-300 dark:placeholder-zinc-600 font-light"
-                            />
+                            <motion.textarea key="editor" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} value={content} onChange={(e) => setContent(e.target.value)} placeholder="Write in Markdown... ✍️" className="w-full h-full p-8 md:p-12 lg:p-24 resize-none bg-transparent outline-none text-xl leading-relaxed font-light" />
                         ) : (
-                            <motion.div
-                                key="preview"
-                                initial={{ opacity: 0, x: 10 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -10 }}
-                                transition={{ duration: 0.2 }}
-                                className="h-full"
-                            >
-                                <MarkdownPreview content={content} />
-                            </motion.div>
+                            <motion.div key="preview" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="h-full"><MarkdownPreview content={content} /></motion.div>
                         )}
                     </AnimatePresence>
                 </div>
             </main>
+            <AnimatePresence>
+                {previewFile && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-zinc-950/90 backdrop-blur-md" onClick={() => setPreviewFile(null)}>
+                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative max-w-4xl max-h-full">
+                            <img src={previewFile} alt="Preview" className="rounded-2xl shadow-2xl max-w-full max-h-[80vh] object-contain" />
+                            <button onClick={() => setPreviewFile(null)} className="absolute -top-12 right-0 p-2 text-white"><X size={24} /></button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };
