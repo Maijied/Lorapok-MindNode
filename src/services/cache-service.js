@@ -5,7 +5,7 @@
 
 const DB_NAME = 'mindnode-cache';
 const STORE_NAME = 'notes-cache';
-const DB_VERSION = 2;
+const DB_VERSION = 2; // Bumped version to ensure onupgradeneeded runs
 
 export const CacheService = {
     async setNote(noteId, data) {

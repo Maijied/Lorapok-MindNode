@@ -1,7 +1,5 @@
 const CACHE_NAME = 'lorapok-mindnode-v1';
 
-// We'll use a more dynamic approach for assets in a real PWA,
-// but for now let's ensure core paths are handled.
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
